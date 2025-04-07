@@ -1,0 +1,10 @@
+List snapshots
+Remove multiple
+Show before/after: "are you sure?"
+Run prune and check automatically
+
+Blame: find what file or dir causes the increase
+Configure the safe increase value
+create test repos
+
+very minimalistic UI
