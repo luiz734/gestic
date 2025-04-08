@@ -1,11 +1,10 @@
 package main
 
 import (
+	// "gestic/models/selector"
 	"fmt"
-	"gestic/models/selector"
 	"gestic/restic"
-	"github.com/charmbracelet/bubbletea"
-	"os"
+	// "github.com/charmbracelet/bubbletea"
 )
 
 func main() {
@@ -19,14 +18,21 @@ func main() {
 	// 	fmt.Printf("%s", s)
 	// }
 
-	p := tea.NewProgram(
-		selector.InitialModel(
-			selector.Model{},
-			snapshots),
-	)
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("Alas, there's been an error: %v", err)
-		os.Exit(1)
+	// p := tea.NewProgram(
+	// 	selector.InitialModel(
+	// 		selector.Model{},
+	// 		snapshots),
+	// )
+	// 	fmt.Printf("Alas, there's been an error: %v", err)
+	// 	os.Exit(1)
+	//
+	path1 := "/home/tohru/tmp/restic/snapshots/2025-03-31T22:34:04-03:00/home/tohru"
+	entries, err := restic.GetDirEntries(path1)
+	if err != nil {
+		panic(err)
+	}
+	for _, e := range entries {
+		fmt.Printf("[%s] \t%s\n", e.SizeRadable, e.PathReadable)
 	}
 
 }
