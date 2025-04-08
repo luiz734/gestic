@@ -10,13 +10,19 @@ import (
 
 type Model struct {
 	snapshots []restic.Snapshot
+	first     int
+	second    int
 	cursor    int
+
+	debug string
 }
 
 func InitialModel(s []restic.Snapshot) Model {
 	m := Model{
 		snapshots: s,
-		cursor:    0,
+		first:     -1,
+		second:    -1,
+		cursor:    len(s) - 1,
 	}
 	return m
 }
@@ -57,7 +63,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "backspace":
+			m.first = -1
+			m.second = -1
+			return m, nil
+		case " ":
+			if m.first == -1 {
+				m.first = m.cursor
+			} else {
+				m.second = m.cursor
+			}
+			return m, nil
+
 		default:
+			m.debug = fmt.Sprintf("%#v", msg.String())
 			return m, nil
 		}
 
@@ -68,17 +87,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	var output strings.Builder
-	var footer string
 
 	for index, s := range m.snapshots {
 		if index == m.cursor {
 			output.WriteString(fmt.Sprintf(">%s", s))
-			footer = fmt.Sprintf("\n%s\n",s.Path)
 		} else {
 			output.WriteString(fmt.Sprintf(" %s", s))
 		}
 	}
 
+	var footer string
+	if m.first != -1 {
+		footer += fmt.Sprintf("\n%s", m.snapshots[m.first].Path)
+	}
+	if m.second != -1 {
+		footer += fmt.Sprintf("\n%s", m.snapshots[m.second].Path)
+	}
 	output.WriteString(footer)
+
+
+	output.WriteString(fmt.Sprintf("\n\nDEBUG: %s", m.debug))
+
 	return output.String()
 }
