@@ -20,7 +20,7 @@ type Snapshot struct {
 
 func (s Snapshot) String() string {
 	layout := "2006-01-02 15:04:05"
-	return fmt.Sprintf("%s\t%s\t%s\n", s.Id, s.Date.Format(layout), s.SizeStr)
+	return fmt.Sprintf("%s\t%s\t%s", s.Id, s.Date.Format(layout), s.SizeStr)
 }
 
 func GetSnapshopts() ([]Snapshot, error) {

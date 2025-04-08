@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	"gestic/models/selector"
 	"gestic/restic"
-	"gestic/ui"
 	"github.com/charmbracelet/bubbletea"
 	"os"
 )
@@ -13,13 +13,17 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	_=snapshots
+	_ = snapshots
 
 	// for _, s := range snapshots {
 	// 	fmt.Printf("%s", s)
 	// }
 
-	p := tea.NewProgram(ui.InitialModel(snapshots))
+	p := tea.NewProgram(
+		selector.InitialModel(
+			selector.Model{},
+			snapshots),
+	)
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)

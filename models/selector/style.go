@@ -1,4 +1,4 @@
-package ui
+package selector
 
 // 	"gestic/ui"
 // 	"github.com/charmbracelet/lipgloss"
@@ -7,15 +7,21 @@ package ui
 var (
 // styleHelp  = models.StyleHelp
 // styleLabel = lipgloss.NewStyle().
-// 		Bold(true).
-// 		Foreground(colors.Pink)
+//
+//	Bold(true).
+//	Foreground(colors.Pink)
+//
 // styleValue = lipgloss.NewStyle().
-// 		Foreground(colors.Surface2)
+//
+//	Foreground(colors.Surface2)
+//
 // styleSeparator = lipgloss.NewStyle().
-// 		Foreground(colors.Surface0)
+//
+//	Foreground(colors.Surface0)
 //
 // styleWrapper = lipgloss.NewStyle().
-// 		Border(lipgloss.DoubleBorder()).
-// 		BorderForeground(colors.Surface0).
-//            Padding(1, 3)
+//
+//			Border(lipgloss.DoubleBorder()).
+//			BorderForeground(colors.Surface0).
+//	           Padding(1, 3)
 )

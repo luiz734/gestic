@@ -1,4 +1,4 @@
-package ui
+package selector
 
 import (
 	"fmt"
@@ -9,6 +9,8 @@ import (
 )
 
 type Model struct {
+	prevModel tea.Model
+
 	snapshots []restic.Snapshot
 	first     int
 	second    int
@@ -17,8 +19,26 @@ type Model struct {
 	debug string
 }
 
-func InitialModel(s []restic.Snapshot) Model {
+type SnapshotSelectionMsg struct {
+	first  restic.Snapshot
+	second restic.Snapshot
+}
+
+func (m Model) sendSnapshotsBack() (tea.Model, tea.Cmd) {
+	return m.prevModel, tea.Batch(
+		// m.prevModel.Init(),
+		// more commands
+		func() tea.Msg {
+			return SnapshotSelectionMsg{
+				first:  m.snapshots[m.first],
+				second: m.snapshots[m.second],
+			}
+		})
+}
+
+func InitialModel(prevModel tea.Model, s []restic.Snapshot) Model {
 	m := Model{
+		prevModel: prevModel,
 		snapshots: s,
 		first:     -1,
 		second:    -1,
@@ -63,17 +83,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case " ":
+			if m.first == -1 {
+				m.first = m.cursor
+			} else if m.first != m.cursor {
+				m.second = m.cursor
+			}
+			return m, nil
 		case "backspace":
 			m.first = -1
 			m.second = -1
 			return m, nil
-		case " ":
-			if m.first == -1 {
-				m.first = m.cursor
-			} else {
-				m.second = m.cursor
+		case "enter":
+			if m.first == -1 || m.second == -1 {
+				return m, nil
 			}
-			return m, nil
+			return m.sendSnapshotsBack()
 
 		default:
 			m.debug = fmt.Sprintf("%#v", msg.String())
@@ -89,22 +114,28 @@ func (m Model) View() string {
 	var output strings.Builder
 
 	for index, s := range m.snapshots {
+		var lineEnd = ""
+		if m.first == index {
+			lineEnd = " [1]"
+		} else if m.second == index {
+			lineEnd = " [2]"
+		}
+
 		if index == m.cursor {
-			output.WriteString(fmt.Sprintf(">%s", s))
+			output.WriteString(fmt.Sprintf(">%s%s\n", s, lineEnd))
 		} else {
-			output.WriteString(fmt.Sprintf(" %s", s))
+			output.WriteString(fmt.Sprintf(" %s%s\n", s, lineEnd))
 		}
 	}
 
 	var footer string
 	if m.first != -1 {
-		footer += fmt.Sprintf("\n%s", m.snapshots[m.first].Path)
+		footer += fmt.Sprintf("\n%s %s", "[1]", m.snapshots[m.first].Path)
 	}
 	if m.second != -1 {
-		footer += fmt.Sprintf("\n%s", m.snapshots[m.second].Path)
+		footer += fmt.Sprintf("\n%s %s", "[2]", m.snapshots[m.second].Path)
 	}
 	output.WriteString(footer)
-
 
 	output.WriteString(fmt.Sprintf("\n\nDEBUG: %s", m.debug))
 

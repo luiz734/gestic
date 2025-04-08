@@ -1,4 +1,4 @@
-package ui
+package selector
 
 import "github.com/charmbracelet/bubbles/key"
 
