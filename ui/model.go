@@ -68,13 +68,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	var output strings.Builder
+	var footer string
 
 	for index, s := range m.snapshots {
 		if index == m.cursor {
 			output.WriteString(fmt.Sprintf(">%s", s))
+			footer = fmt.Sprintf("\n%s\n",s.Path)
 		} else {
 			output.WriteString(fmt.Sprintf(" %s", s))
 		}
 	}
+
+	output.WriteString(footer)
 	return output.String()
 }
