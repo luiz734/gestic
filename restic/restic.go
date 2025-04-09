@@ -25,7 +25,10 @@ func (s Snapshot) String() string {
 
 func GetSnapshopts() ([]Snapshot, error) {
 	var err error
-	args := []string{"-r", "/mnt/storage/__restic", "snapshots"}
+	// TODO: remove hardcoded repo
+	//var repoHome = "/home/tohru/tmp/test_repo"
+	var repoHome = "/mnt/storage/__restic"
+	args := []string{"-r", repoHome, "snapshots"}
 	var cmd *exec.Cmd
 	if cmd = exec.Command("restic", args...); cmd == nil {
 		return []Snapshot{}, fmt.Errorf("Can't execute restic command: %w", err)

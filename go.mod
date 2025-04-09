@@ -5,13 +5,13 @@ go 1.24.1
 require (
 	github.com/charmbracelet/bubbles v0.20.0
 	github.com/charmbracelet/bubbletea v1.1.0
+	github.com/charmbracelet/lipgloss v0.13.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
 )
 
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/charmbracelet/lipgloss v0.13.0 // indirect
 	github.com/charmbracelet/x/ansi v0.2.3 // indirect
 	github.com/charmbracelet/x/term v0.2.0 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect

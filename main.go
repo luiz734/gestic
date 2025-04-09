@@ -22,7 +22,13 @@ func main() {
 	// 	fmt.Printf("%s", s)
 	// }
 
-	path1 := "/home/tohru/tmp/restic/snapshots/2025-03-31T22:34:04-03:00/home/"
+	path1 := "/home/tohru/tmp/restic/snapshots/2025-03-31T22:34:04-03:00/home"
+	path2 := "/home/tohru/tmp/restic/snapshots/2025-04-09T15:01:43-03:00/home"
+
+	// test
+	//path1 := "/home/tohru/tmp/restic/snapshots/2025-04-09T17:45:55-03:00/home"
+	//path2 := "/home/tohru/tmp/restic/snapshots/2025-04-09T17:46:45-03:00/home"
+
 	entries, err := restic.GetDirEntries(path1)
 	if err != nil {
 		panic(err)
@@ -31,8 +37,18 @@ func main() {
 		panic("Expected 1 entry")
 	}
 
+	entries2, err := restic.GetDirEntries(path2)
+	if err != nil {
+		panic(err)
+	}
+	if len(entries2) != 1 {
+		panic("Expected 1 entry")
+	}
+
 	p := tea.NewProgram(
-		compare.InitialModel(entries[0], entries[0]),
+		compare.InitialModel(entries[0], entries2[0]),
+		// Fix debug on Goland
+		//tea.WithInput(os.Stdin),
 	)
 
 	if err := p.Start(); err != nil {
