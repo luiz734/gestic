@@ -4,6 +4,7 @@ import (
 	// "gestic/models/selector"
 	"fmt"
 	"gestic/restic"
+	"strings"
 	// "github.com/charmbracelet/bubbletea"
 )
 
@@ -31,8 +32,18 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	for _, e := range entries {
-		fmt.Printf("[%s] \t%s\n", e.SizeRadable, e.PathReadable)
+	for _, entry := range entries {
+		PrintNodes(entry, 0)
 	}
+}
 
+func PrintNodes(n restic.DirData, level int) {
+	spaces := strings.Repeat(" ", level*2.0)
+	fmt.Printf(spaces)
+	fmt.Printf("[%s] \t%s\n", n.SizeRadable, n.PathReadable)
+	if len(n.Children) > 0 && level <= 999 {
+		for _, c := range n.Children {
+			PrintNodes(c, level+1)
+		}
+	}
 }
