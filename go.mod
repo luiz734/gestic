@@ -6,6 +6,7 @@ require (
 	github.com/charmbracelet/bubbles v0.20.0
 	github.com/charmbracelet/bubbletea v1.1.0
 	github.com/dustin/go-humanize v1.0.1
+	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
 )
 
 require (

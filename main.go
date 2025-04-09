@@ -3,7 +3,10 @@ package main
 import (
 	// "gestic/models/selector"
 	"fmt"
+	"gestic/models/compare"
 	"gestic/restic"
+	tea "github.com/charmbracelet/bubbletea"
+	"os"
 	"strings"
 	// "github.com/charmbracelet/bubbletea"
 )
@@ -19,22 +22,27 @@ func main() {
 	// 	fmt.Printf("%s", s)
 	// }
 
-	// p := tea.NewProgram(
-	// 	selector.InitialModel(
-	// 		selector.Model{},
-	// 		snapshots),
-	// )
-	// 	fmt.Printf("Alas, there's been an error: %v", err)
-	// 	os.Exit(1)
-	//
-	path1 := "/home/tohru/tmp/restic/snapshots/2025-03-31T22:34:04-03:00/home/tohru"
+	path1 := "/home/tohru/tmp/restic/snapshots/2025-03-31T22:34:04-03:00/home/"
 	entries, err := restic.GetDirEntries(path1)
 	if err != nil {
 		panic(err)
 	}
-	for _, entry := range entries {
-		PrintNodes(entry, 0)
+	if len(entries) != 1 {
+		panic("Expected 1 entry")
 	}
+
+	p := tea.NewProgram(
+		compare.InitialModel(entries[0], entries[0]),
+	)
+
+	if err := p.Start(); err != nil {
+		fmt.Printf("Alas, there's been an error: %v", err)
+		os.Exit(1)
+	}
+
+	//for _, entry := range entries {
+	//	PrintNodes(entry, 0)
+	//}
 }
 
 func PrintNodes(n restic.DirData, level int) {

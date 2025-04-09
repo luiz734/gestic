@@ -3,46 +3,26 @@ package compare
 import (
 	"fmt"
 	"gestic/restic"
+	"github.com/golang-collections/collections/stack"
 	"strings"
 
 	"github.com/charmbracelet/bubbletea"
 )
 
 type Model struct {
-	prevModel tea.Model
-
-	snapshots []restic.Snapshot
-	first     int
-	second    int
-	cursor    int
-
-	debug string
+	largerDir  restic.DirData
+	smallerDir restic.DirData
+	dirStack   *stack.Stack
+	cursor     int
 }
 
-type SnapshotSelectionMsg struct {
-	first  restic.Snapshot
-	second restic.Snapshot
-}
-
-func (m Model) sendSnapshotsBack() (tea.Model, tea.Cmd) {
-	return m.prevModel, tea.Batch(
-		// m.prevModel.Init(),
-		// more commands
-		func() tea.Msg {
-			return SnapshotSelectionMsg{
-				first:  m.snapshots[m.first],
-				second: m.snapshots[m.second],
-			}
-		})
-}
-
-func InitialModel(prevModel tea.Model, s []restic.Snapshot) Model {
+func InitialModel(l, s restic.DirData) Model {
+	dirStack := stack.New()
+	dirStack.Push(l)
 	m := Model{
-		prevModel: prevModel,
-		snapshots: s,
-		first:     -1,
-		second:    -1,
-		cursor:    len(s) - 1,
+		largerDir:  l,
+		smallerDir: s,
+		dirStack:   dirStack,
 	}
 	return m
 }
@@ -50,58 +30,42 @@ func InitialModel(prevModel tea.Model, s []restic.Snapshot) Model {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		tea.ClearScreen,
-		// func() tea.Msg {
-		// 	return tea.WindowSizeMsg{Width: m.width, Height: m.height}
-		// },
 	)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
-	// Is it a key press?
 	case tea.KeyMsg:
-
-		// Cool, what was the actual key pressed?
 		switch msg.String() {
-
-		// These keys should exit the program.
 		case "ctrl+c", "q":
 			return m, tea.Quit
-
 		case "j":
 			m.cursor += 1
-			if m.cursor > len(m.snapshots)-1 {
+			if m.cursor > len(m.largerDir.Children)-1 {
 				m.cursor -= 1
 			}
 			return m, nil
-
 		case "k":
 			m.cursor -= 1
 			if m.cursor < 0 {
 				m.cursor += 1
 			}
 			return m, nil
-
-		case " ":
-			if m.first == -1 {
-				m.first = m.cursor
-			} else if m.first != m.cursor {
-				m.second = m.cursor
+		case "l":
+			childDir := m.largerDir.Children[m.cursor]
+			m.dirStack.Push(m.largerDir)
+			m.largerDir = childDir
+			return m, nil
+		case "h":
+			if m.dirStack.Len() > 1 {
+				parentDir := m.dirStack.Pop().(restic.DirData)
+				m.largerDir = parentDir
 			}
 			return m, nil
-		case "backspace":
-			m.first = -1
-			m.second = -1
-			return m, nil
-		case "enter":
-			if m.first == -1 || m.second == -1 {
-				return m, nil
-			}
-			return m.sendSnapshotsBack()
 
 		default:
-			m.debug = fmt.Sprintf("%#v", msg.String())
+			//m.debug = fmt.Sprintf("%#v", msg.String())
 			return m, nil
 		}
 
@@ -113,31 +77,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) View() string {
 	var output strings.Builder
 
-	for index, s := range m.snapshots {
-		var lineEnd = ""
-		if m.first == index {
-			lineEnd = " [1]"
-		} else if m.second == index {
-			lineEnd = " [2]"
-		}
+	maxLines := 10
+	startIndex := max(min(m.cursor-maxLines/2, len(m.largerDir.Children)-maxLines), 0)
+	endIndex := min(len(m.largerDir.Children)-1, startIndex+maxLines)
+	i := startIndex
 
-		if index == m.cursor {
-			output.WriteString(fmt.Sprintf(">%s%s\n", s, lineEnd))
+	for i <= endIndex {
+		e := m.largerDir.Children[i]
+		if i == m.cursor {
+			output.WriteString(fmt.Sprintf("> [%s] %s\n", e.SizeRadable, e.PathReadable))
 		} else {
-			output.WriteString(fmt.Sprintf(" %s%s\n", s, lineEnd))
+			output.WriteString(fmt.Sprintf("  [%s] %s\n", e.SizeRadable, e.PathReadable))
 		}
+		i += 1
 	}
-
 	var footer string
-	if m.first != -1 {
-		footer += fmt.Sprintf("\n%s %s", "[1]", m.snapshots[m.first].Path)
-	}
-	if m.second != -1 {
-		footer += fmt.Sprintf("\n%s %s", "[2]", m.snapshots[m.second].Path)
-	}
+	footer += fmt.Sprintf("\nCursor: %d", m.cursor)
 	output.WriteString(footer)
-
-	output.WriteString(fmt.Sprintf("\n\nDEBUG: %s", m.debug))
 
 	return output.String()
 }
