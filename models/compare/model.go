@@ -66,6 +66,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < 0 {
 				m.cursor += 1
 			}
+			m.cursor = 0
 			return m, nil
 		case "l":
 			childDir := m.largerDir.Children[m.cursor]
@@ -112,7 +113,7 @@ func (m Model) View() string {
 	endIndex := min(len(m.largerDir.Children)-1, startIndex+linesVisible)
 
 	tableData, err := generateStringSlice(
-		m.largerDir.Children[startIndex:endIndex],
+		m.largerDir.Children[startIndex:endIndex+1],
 		m.smallerDir.Children,
 	)
 	if err != nil {

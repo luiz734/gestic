@@ -2,6 +2,7 @@ package selector
 
 import (
 	"fmt"
+	"gestic/models/compare"
 	"gestic/restic"
 	"strings"
 
@@ -24,21 +25,38 @@ type SnapshotSelectionMsg struct {
 	second restic.Snapshot
 }
 
-func (m Model) sendSnapshotsBack() (tea.Model, tea.Cmd) {
-	return m.prevModel, tea.Batch(
+func (m Model) advaceToCompare() (tea.Model, tea.Cmd) {
+	entries, err := restic.GetDirEntries(m.snapshots[m.first].Path)
+	if err != nil {
+		panic(err)
+	}
+	if len(entries) != 1 {
+		panic("Expected 1 entry")
+	}
+	entries2, err := restic.GetDirEntries(m.snapshots[m.second].Path)
+	if err != nil {
+		panic(err)
+	}
+	if len(entries2) != 1 {
+		panic("Expected 1 entry")
+	}
+	compareModel := compare.InitialModel(entries[0], entries2[0])
+
+	return compareModel, tea.Batch(
+		compareModel.Init(),
 		// m.prevModel.Init(),
 		// more commands
-		func() tea.Msg {
-			return SnapshotSelectionMsg{
-				first:  m.snapshots[m.first],
-				second: m.snapshots[m.second],
-			}
-		})
+		//func() tea.Msg {
+		//	return SnapshotSelectionMsg{
+		//		first:  m.snapshots[m.first],
+		//		second: m.snapshots[m.second],
+		//	}
+	)
 }
 
-func InitialModel(prevModel tea.Model, s []restic.Snapshot) Model {
+func InitialModel(s []restic.Snapshot) Model {
 	m := Model{
-		prevModel: prevModel,
+		//prevModel: prevModel,
 		snapshots: s,
 		first:     -1,
 		second:    -1,
@@ -98,7 +116,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.first == -1 || m.second == -1 {
 				return m, nil
 			}
-			return m.sendSnapshotsBack()
+			return m.advaceToCompare()
 
 		default:
 			m.debug = fmt.Sprintf("%#v", msg.String())
