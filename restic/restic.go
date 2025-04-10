@@ -18,6 +18,13 @@ type Snapshot struct {
 	Path    string
 }
 
+type SnapshotsMetadata struct {
+	NewerFullPath string
+	NewerId       string
+	OlderFullPath string
+	OlderId       string
+}
+
 func (s Snapshot) String() string {
 	layout := "2006-01-02 15:04:05"
 	return fmt.Sprintf("%s\t%s\t%s", s.Id, s.Date.Format(layout), s.SizeStr)

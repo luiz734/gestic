@@ -3,8 +3,11 @@ package compare
 import (
 	"fmt"
 	"gestic/restic"
+	"golang.design/x/clipboard"
 	"math"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -17,13 +20,15 @@ type Model struct {
 	width     int
 	height    int
 
-	dirNew  restic.DirData
-	dirOld  restic.DirData
-	rootDir string
-	table   table.Model
+	metadata restic.SnapshotsMetadata
+	dirNew   restic.DirData
+	dirOld   restic.DirData
+	table    table.Model
+
+	clipboard []string
 }
 
-func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld restic.DirData) *Model {
+func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld restic.DirData, metadata restic.SnapshotsMetadata) *Model {
 	columns := []table.Column{
 		{Title: "New", Width: 20},
 		{Title: "Old", Width: 20},
@@ -35,7 +40,7 @@ func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld restic.
 		height:    height,
 		dirNew:    dirNew,
 		dirOld:    dirOld,
-		rootDir:   dirNew.Path,
+		metadata:  metadata,
 		table: table.New(
 			table.WithColumns(columns),
 			table.WithFocused(true),
@@ -74,8 +79,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c2Width := int(math.Ceil(float64(m.width) * 0.4))
 		c3Width := m.width - c1Width - c2Width
 		columns := []table.Column{
-			{Title: "New", Width: c1Width},
-			{Title: "Old", Width: c2Width},
+			{Title: fmt.Sprintf("New (%s)", m.metadata.NewerId), Width: c1Width},
+			{Title: fmt.Sprintf("Old (%s)", m.metadata.OlderId), Width: c2Width},
 			{Title: "Diff", Width: c3Width},
 		}
 		// Restore cursor or set to 0 if there is no previous cursor
@@ -101,7 +106,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if nextOldDir == nil {
 				nextOldDir = &restic.DirData{}
 			}
-			nextModel := InitialModel(m, m.width, m.height, nextNewDir, *nextOldDir)
+			nextModel := InitialModel(m, m.width, m.height, nextNewDir, *nextOldDir, m.metadata)
 			return nextModel, nextModel.Init()
 		case "h":
 			// Notifies if the window have changed size
@@ -110,18 +115,32 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return tea.WindowSizeMsg{Width: m.width, Height: m.height}
 				}
 			}
+		case "1", "2", "3":
+			targetClipboard, err := strconv.Atoi(msg.String())
+			if err != nil {
+				panic(err)
+			}
+			targetClipboard -= 1
+			if targetClipboard < len(m.clipboard) {
+				err := clipboard.Init()
+				if err != nil {
+					panic(err)
+				}
+				clipboard.Write(clipboard.FmtText, []byte(m.clipboard[targetClipboard]))
+			}
 		}
 	}
 	m.table, cmd = m.table.Update(msg)
+	// Order matters here
+	m.clipboard = m.updateClipboard()
 	return m, cmd
 }
 
 func (m *Model) View() string {
 	var output strings.Builder
 
-	output.WriteString(fmt.Sprintf("%s\n\n", m.rootDir))
 	output.WriteString(m.table.View())
-	output.WriteString(fmt.Sprintf("\n\n%s\n", m.dirNew.Children[m.table.Cursor()].Path))
+	output.WriteString(m.metadataView())
 
 	var footer string
 	footer += fmt.Sprintf("\nCursor: %d", m.table.Cursor())
@@ -129,6 +148,27 @@ func (m *Model) View() string {
 	output.WriteString(footer)
 
 	return output.String()
+}
+
+func (m *Model) metadataView() string {
+	var output strings.Builder
+	output.WriteString("\n\n")
+	for index, c := range m.clipboard {
+		output.WriteString(fmt.Sprintf("[%d] %s\n", index+1, c))
+	}
+	return output.String()
+}
+
+func (m *Model) updateClipboard() []string {
+	c := []string{
+		m.dirNew.Children[m.table.Cursor()].Path,
+		m.dirOld.Children[m.table.Cursor()].Path,
+	}
+	fileSystemPath, err := filepath.Rel(m.metadata.NewerFullPath, m.dirNew.Children[m.table.Cursor()].Path)
+	if err == nil {
+		c = append(c, "/"+fileSystemPath)
+	}
+	return c
 }
 
 func generateStringSlice(newer, older restic.DirData) ([]table.Row, error) {
@@ -179,8 +219,8 @@ func generateStringSlice(newer, older restic.DirData) ([]table.Row, error) {
 			signStr = "-"
 		}
 		diffStr := fmt.Sprintf("%s%s", signStr, humanize.Bytes(d.absDiff))
-		newerStr := fmt.Sprintf("%s %s", d.newer.SizeRadable, d.newer.PathReadable)
-		eqStr := fmt.Sprintf("%s %s", d.older.SizeRadable, d.older.PathReadable)
+		newerStr := fmt.Sprintf("%s %s", d.newer.SizeReadable, d.newer.PathReadable)
+		eqStr := fmt.Sprintf("%s %s", d.older.SizeReadable, d.older.PathReadable)
 		t = append(t, []string{newerStr, eqStr, diffStr})
 	}
 	return t, nil

@@ -15,7 +15,7 @@ type DirData struct {
 	Path         string    // Full absolute path
 	PathReadable string    // Name relative to parent directory
 	Size         uint64    // Size (file size or sum of children's sizes)
-	SizeRadable  string    // Human-readable size
+	SizeReadable string    // Human-readable size
 }
 
 // GetDirEntries returns the immediate entries of dirPath, with directories' Children fields recursively populated.
@@ -55,7 +55,7 @@ func GetDirEntries(dirPath string) ([]DirData, error) {
 				Children:     children,
 				Path:         entryPath,
 				Size:         size,
-				SizeRadable:  humanize.Bytes(size),
+				SizeReadable: humanize.Bytes(size),
 				PathReadable: e.Name(), // Relative to parent, matches original behavior
 			}
 			entriesData = append(entriesData, dirData)
@@ -66,7 +66,7 @@ func GetDirEntries(dirPath string) ([]DirData, error) {
 				Children:     []DirData{}, // Empty for files
 				Path:         entryPath,
 				Size:         size,
-				SizeRadable:  humanize.Bytes(size),
+				SizeReadable: humanize.Bytes(size),
 				PathReadable: e.Name(), // Relative to parent
 			}
 			entriesData = append(entriesData, dirData)

@@ -36,7 +36,13 @@ func (m Model) advanceToCompare() (tea.Model, tea.Cmd) {
 	if len(newEntries) != 1 || len(oldEntries) != 1 {
 		panic(fmt.Errorf("root directory should contain 1 child: %w", err))
 	}
-	compareModel := compare.InitialModel(nil, m.width, m.height, newEntries[0], oldEntries[0])
+	metadata := restic.SnapshotsMetadata{
+		NewerFullPath: m.snapshots[m.snapshotNew].Path,
+		NewerId:       m.snapshots[m.snapshotNew].Id,
+		OlderFullPath: m.snapshots[m.snapshotOld].Path,
+		OlderId:       m.snapshots[m.snapshotOld].Id,
+	}
+	compareModel := compare.InitialModel(nil, m.width, m.height, newEntries[0], oldEntries[0], metadata)
 	return compareModel, tea.Batch(
 		compareModel.Init(),
 	)
