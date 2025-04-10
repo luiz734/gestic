@@ -10,6 +10,8 @@ import (
 )
 
 type Model struct {
+	width       int
+	height      int
 	snapshots   []restic.Snapshot
 	snapshotNew int
 	snapshotOld int
@@ -34,7 +36,7 @@ func (m Model) advanceToCompare() (tea.Model, tea.Cmd) {
 	if len(newEntries) != 1 || len(oldEntries) != 1 {
 		panic(fmt.Errorf("root directory should contain 1 child: %w", err))
 	}
-	compareModel := compare.InitialModel(newEntries[0], oldEntries[0])
+	compareModel := compare.InitialModel(m.width, m.height, newEntries[0], oldEntries[0])
 	return compareModel, tea.Batch(
 		compareModel.Init(),
 	)
@@ -58,6 +60,9 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":

@@ -3,6 +3,7 @@ package compare
 import (
 	"fmt"
 	"gestic/restic"
+	"math"
 	"slices"
 	"strings"
 
@@ -23,7 +24,7 @@ type Model struct {
 	table       table.Model
 }
 
-func InitialModel(dirNew, dirOld restic.DirData) Model {
+func InitialModel(width, height int, dirNew, dirOld restic.DirData) Model {
 	stackDirNew := stack.New()
 	stackDirNew.Push(dirNew)
 	stackDirOld := stack.New()
@@ -35,6 +36,8 @@ func InitialModel(dirNew, dirOld restic.DirData) Model {
 		{Title: "Diff", Width: 10},
 	}
 	m := Model{
+		width:       width,
+		height:      height,
 		dirNew:      dirNew,
 		dirOld:      dirOld,
 		rootDir:     dirNew.Path,
@@ -62,6 +65,7 @@ func (m Model) updateTable() Model {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		tea.ClearScreen,
+		func() tea.Msg { return tea.WindowSizeMsg{Width: m.width, Height: m.height} },
 	)
 }
 
@@ -72,6 +76,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		c1Width := int(math.Floor(float64(m.width) * 0.4))
+		c2Width := int(math.Ceil(float64(m.width) * 0.4))
+		c3Width := m.width - c1Width - c2Width
+		columns := []table.Column{
+			{Title: "New", Width: c1Width},
+			{Title: "Old", Width: c2Width},
+			{Title: "Diff", Width: c3Width},
+		}
+		m.table = table.New(
+			table.WithColumns(columns),
+			table.WithFocused(true),
+			table.WithHeight(10),
+		)
+		return m.updateTable(), nil
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -129,30 +147,52 @@ func (m Model) View() string {
 
 func generateStringSlice(newer, older restic.DirData) ([]table.Row, error) {
 	type TableData struct {
-		newer restic.DirData
-		older restic.DirData
-		diff  uint64
+		newer   restic.DirData
+		older   restic.DirData
+		absDiff uint64
+		diff    int
 	}
 	var data []TableData
 	for i := range len(newer.Children) {
 		n := newer.Children[i]
 		eq := findEquivalent(n, older.Children)
-		var diff uint64
 		if eq == nil {
 			eq = &restic.DirData{Size: 0, PathReadable: "<???>"}
 		}
-		greater := max(n.Size, eq.Size)
-		lesser := min(n.Size, eq.Size)
-		diff = greater - lesser
-		data = append(data, TableData{n, *eq, diff})
+		diff := int(n.Size) - int(eq.Size)
+		absDiff := uint64(math.Abs(float64(diff)))
+		data = append(data, TableData{n, *eq, absDiff, diff})
 	}
-	slices.SortFunc(data, func(a, b TableData) int {
-		return int(b.diff - a.diff)
-	})
+
+	for i := range len(older.Children) {
+		o := older.Children[i]
+		// Skip entries already in "newer"
+		if slices.ContainsFunc(newer.Children, func(e restic.DirData) bool {
+			return o.PathReadable == e.PathReadable
+		}) {
+			continue
+		}
+		eq := findEquivalent(o, newer.Children)
+		if eq == nil {
+			eq = &restic.DirData{Size: 0, PathReadable: "<???>"}
+		}
+		diff := int(o.Size) - int(eq.Size)
+		absDiff := uint64(math.Abs(float64(diff)))
+		data = append(data, TableData{o, *eq, absDiff, diff})
+	}
+
+	// TODO: sort by diff
+	//slices.SortFunc(data, func(a, b TableData) int {
+	//	return int(b.diff - a.diff)
+	//})
 
 	var t []table.Row
 	for _, d := range data {
-		diffStr := humanize.Bytes(d.diff)
+		signStr := "+"
+		if d.diff < 0 {
+			signStr = "-"
+		}
+		diffStr := fmt.Sprintf("%s%s", signStr, humanize.Bytes(d.absDiff))
 		newerStr := fmt.Sprintf("%s %s", d.newer.SizeRadable, d.newer.PathReadable)
 		eqStr := fmt.Sprintf("%s %s", d.older.SizeRadable, d.older.PathReadable)
 		t = append(t, []string{newerStr, eqStr, diffStr})
