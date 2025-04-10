@@ -3,11 +3,11 @@ package compare
 import (
 	"fmt"
 	"gestic/restic"
+	"slices"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
 	"github.com/dustin/go-humanize"
 	"github.com/golang-collections/collections/stack"
 )
@@ -20,7 +20,7 @@ type Model struct {
 	rootDir     string
 	stackDirNew *stack.Stack
 	stackDirOld *stack.Stack
-	cursor      int
+	table       table.Model
 }
 
 func InitialModel(dirNew, dirOld restic.DirData) Model {
@@ -28,13 +28,34 @@ func InitialModel(dirNew, dirOld restic.DirData) Model {
 	stackDirNew.Push(dirNew)
 	stackDirOld := stack.New()
 	stackDirOld.Push(dirOld)
+
+	columns := []table.Column{
+		{Title: "New", Width: 20},
+		{Title: "Old", Width: 20},
+		{Title: "Diff", Width: 10},
+	}
 	m := Model{
 		dirNew:      dirNew,
 		dirOld:      dirOld,
 		rootDir:     dirNew.Path,
 		stackDirNew: stackDirNew,
 		stackDirOld: stackDirOld,
+		table: table.New(
+			table.WithColumns(columns),
+			table.WithFocused(true),
+			table.WithHeight(10),
+		),
 	}
+	m = m.updateTable()
+	return m
+}
+
+func (m Model) updateTable() Model {
+	rows, err := generateStringSlice(m.dirNew, m.dirOld)
+	if err != nil {
+		panic(err)
+	}
+	m.table.SetRows(rows)
 	return m
 }
 
@@ -45,6 +66,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
@@ -55,21 +77,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
-		case "j":
-			m.cursor += 1
-			if m.cursor > len(m.dirNew.Children)-1 {
-				m.cursor -= 1
-			}
-			return m, nil
-		case "k":
-			m.cursor -= 1
-			if m.cursor < 0 {
-				m.cursor += 1
-			}
-			m.cursor = 0
-			return m, nil
 		case "l":
-			childDir := m.dirNew.Children[m.cursor]
+			childDir := m.dirNew.Children[m.table.Cursor()]
 			// Files or empty dirs
 			if len(childDir.Children) == 0 {
 				return m, nil
@@ -82,7 +91,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.stackDirOld.Push(m.dirOld)
 			m.dirOld = *eq
-			m.cursor = 0
+			m.table.GotoTop()
+			m = m.updateTable()
 			return m, nil
 		case "h":
 			if m.stackDirNew.Len() > 1 {
@@ -91,82 +101,63 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				smallerDir := m.stackDirOld.Pop().(restic.DirData)
 				m.dirOld = smallerDir
 			}
-			return m, nil
-		default:
+			m = m.updateTable()
+			m.table.GotoTop()
 			return m, nil
 		}
 	}
-	return m, nil
+	m.table, cmd = m.table.Update(msg)
+	return m, cmd
 }
 
 func (m Model) View() string {
 	var output strings.Builder
 
 	output.WriteString(fmt.Sprintf("%s\n\n", m.rootDir))
-
-	linesVisible := 10
-	startIndex := max(min(m.cursor-linesVisible/2, len(m.dirNew.Children)-linesVisible), 0)
-	endIndex := min(len(m.dirNew.Children)-1, startIndex+linesVisible)
-
-	tableData, err := generateStringSlice(
-		m.dirNew.Children[startIndex:endIndex+1],
-		m.dirOld.Children,
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	t := table.New().
-		Border(lipgloss.HiddenBorder()).
-		Width(m.width).
-		StyleFunc(func(row, col int) lipgloss.Style {
-			switch {
-			case row == m.cursor+1-startIndex:
-				return focusStyle
-			default:
-				return defaultStyle
-			}
-		}).
-		Headers("NEWER", "OLDER", "DIFF").
-		Rows(tableData...)
-
-	output.WriteString(t.Render())
-
-	output.WriteString(fmt.Sprintf("\n\n%s\n", m.dirNew.Children[m.cursor].Path))
+	output.WriteString(m.table.View())
+	output.WriteString(fmt.Sprintf("\n\n%s\n", m.dirNew.Children[m.table.Cursor()].Path))
 
 	var footer string
-	//footer += fmt.Sprintf("\nCursor: %d", m.cursor)
-	//footer += fmt.Sprintf("\nStackDir: %#v", m.stackDirNew)
-	//footer += fmt.Sprintf("\nStackSmaller: %#v", m.stackDirOld)
+	footer += fmt.Sprintf("\nCursor: %d", m.table.Cursor())
+	footer += fmt.Sprintf("\nStackDir: %#v", m.stackDirNew)
+	footer += fmt.Sprintf("\nStackSmaller: %#v", m.stackDirOld)
 	//footer += fmt.Sprintf("\nDEBUG: %#v", tableData)
 	output.WriteString(footer)
 
 	return output.String()
 }
 
-func generateStringSlice(newer, older []restic.DirData) ([][]string, error) {
-	var t [][]string
-
-	for i := range len(newer) {
-		n := newer[i]
-
-		eqStr := "???"
-		diff := n.Size
-		eq := findEquivalent(n, older)
-		if eq != nil {
-			greater := max(n.Size, eq.Size)
-			lesser := min(n.Size, eq.Size)
-			diff = greater - lesser
-			eqStr = fmt.Sprintf("%s %s", eq.SizeRadable, eq.PathReadable)
+func generateStringSlice(newer, older restic.DirData) ([]table.Row, error) {
+	type TableData struct {
+		newer restic.DirData
+		older restic.DirData
+		diff  uint64
+	}
+	var data []TableData
+	for i := range len(newer.Children) {
+		n := newer.Children[i]
+		eq := findEquivalent(n, older.Children)
+		var diff uint64
+		if eq == nil {
+			eq = &restic.DirData{Size: 0, PathReadable: "<???>"}
 		}
+		greater := max(n.Size, eq.Size)
+		lesser := min(n.Size, eq.Size)
+		diff = greater - lesser
+		data = append(data, TableData{n, *eq, diff})
+	}
+	slices.SortFunc(data, func(a, b TableData) int {
+		return int(b.diff - a.diff)
+	})
 
-		diffStr := humanize.Bytes(diff)
-		newerStr := fmt.Sprintf("%s %s", n.SizeRadable, n.PathReadable)
+	var t []table.Row
+	for _, d := range data {
+		diffStr := humanize.Bytes(d.diff)
+		newerStr := fmt.Sprintf("%s %s", d.newer.SizeRadable, d.newer.PathReadable)
+		eqStr := fmt.Sprintf("%s %s", d.older.SizeRadable, d.older.PathReadable)
 		t = append(t, []string{newerStr, eqStr, diffStr})
 	}
-
 	return t, nil
-
 }
 
 func findEquivalent(like restic.DirData, options []restic.DirData) *restic.DirData {
