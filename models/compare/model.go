@@ -10,66 +10,60 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/dustin/go-humanize"
-	"github.com/golang-collections/collections/stack"
 )
 
 type Model struct {
-	width       int
-	height      int
-	dirNew      restic.DirData
-	dirOld      restic.DirData
-	rootDir     string
-	stackDirNew *stack.Stack
-	stackDirOld *stack.Stack
-	table       table.Model
+	prevModel tea.Model
+	width     int
+	height    int
+
+	dirNew  restic.DirData
+	dirOld  restic.DirData
+	rootDir string
+	table   table.Model
 }
 
-func InitialModel(width, height int, dirNew, dirOld restic.DirData) Model {
-	stackDirNew := stack.New()
-	stackDirNew.Push(dirNew)
-	stackDirOld := stack.New()
-	stackDirOld.Push(dirOld)
-
+func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld restic.DirData) *Model {
 	columns := []table.Column{
 		{Title: "New", Width: 20},
 		{Title: "Old", Width: 20},
 		{Title: "Diff", Width: 10},
 	}
 	m := Model{
-		width:       width,
-		height:      height,
-		dirNew:      dirNew,
-		dirOld:      dirOld,
-		rootDir:     dirNew.Path,
-		stackDirNew: stackDirNew,
-		stackDirOld: stackDirOld,
+		prevModel: prevModel,
+		width:     width,
+		height:    height,
+		dirNew:    dirNew,
+		dirOld:    dirOld,
+		rootDir:   dirNew.Path,
 		table: table.New(
 			table.WithColumns(columns),
 			table.WithFocused(true),
 			table.WithHeight(10),
 		),
 	}
-	m = m.updateTable()
-	return m
+	m = *m.updateTable(-1)
+	return &m
 }
 
-func (m Model) updateTable() Model {
+func (m *Model) updateTable(cursor int) *Model {
 	rows, err := generateStringSlice(m.dirNew, m.dirOld)
 	if err != nil {
 		panic(err)
 	}
 	m.table.SetRows(rows)
+	m.table.SetCursor(cursor)
 	return m
 }
 
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		tea.ClearScreen,
 		func() tea.Msg { return tea.WindowSizeMsg{Width: m.width, Height: m.height} },
 	)
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
 
@@ -84,51 +78,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			{Title: "Old", Width: c2Width},
 			{Title: "Diff", Width: c3Width},
 		}
+		// Restore cursor or set to 0 if there is no previous cursor
+		oldCursor := m.table.Cursor()
 		m.table = table.New(
 			table.WithColumns(columns),
 			table.WithFocused(true),
 			table.WithHeight(10),
 		)
-		return m.updateTable(), nil
+		return m.updateTable(oldCursor), nil
 
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "l":
-			childDir := m.dirNew.Children[m.table.Cursor()]
+			nextNewDir := m.dirNew.Children[m.table.Cursor()]
 			// Files or empty dirs
-			if len(childDir.Children) == 0 {
+			if len(nextNewDir.Children) == 0 {
 				return m, nil
 			}
-			m.stackDirNew.Push(m.dirNew)
-			m.dirNew = childDir
-			eq := findEquivalent(childDir, m.dirOld.Children)
-			if eq == nil {
-				eq = &restic.DirData{}
+			nextOldDir := findEquivalent(nextNewDir, m.dirOld.Children)
+			if nextOldDir == nil {
+				nextOldDir = &restic.DirData{}
 			}
-			m.stackDirOld.Push(m.dirOld)
-			m.dirOld = *eq
-			m.table.GotoTop()
-			m = m.updateTable()
-			return m, nil
+			nextModel := InitialModel(m, m.width, m.height, nextNewDir, *nextOldDir)
+			return nextModel, nextModel.Init()
 		case "h":
-			if m.stackDirNew.Len() > 1 {
-				parentDir := m.stackDirNew.Pop().(restic.DirData)
-				m.dirNew = parentDir
-				smallerDir := m.stackDirOld.Pop().(restic.DirData)
-				m.dirOld = smallerDir
+			// Notifies if the window have changed size
+			if m.prevModel != nil {
+				return m.prevModel, func() tea.Msg {
+					return tea.WindowSizeMsg{Width: m.width, Height: m.height}
+				}
 			}
-			m = m.updateTable()
-			m.table.GotoTop()
-			return m, nil
 		}
 	}
 	m.table, cmd = m.table.Update(msg)
 	return m, cmd
 }
 
-func (m Model) View() string {
+func (m *Model) View() string {
 	var output strings.Builder
 
 	output.WriteString(fmt.Sprintf("%s\n\n", m.rootDir))
@@ -137,8 +125,6 @@ func (m Model) View() string {
 
 	var footer string
 	footer += fmt.Sprintf("\nCursor: %d", m.table.Cursor())
-	footer += fmt.Sprintf("\nStackDir: %#v", m.stackDirNew)
-	footer += fmt.Sprintf("\nStackSmaller: %#v", m.stackDirOld)
 	//footer += fmt.Sprintf("\nDEBUG: %#v", tableData)
 	output.WriteString(footer)
 

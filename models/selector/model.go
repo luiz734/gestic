@@ -36,7 +36,7 @@ func (m Model) advanceToCompare() (tea.Model, tea.Cmd) {
 	if len(newEntries) != 1 || len(oldEntries) != 1 {
 		panic(fmt.Errorf("root directory should contain 1 child: %w", err))
 	}
-	compareModel := compare.InitialModel(m.width, m.height, newEntries[0], oldEntries[0])
+	compareModel := compare.InitialModel(nil, m.width, m.height, newEntries[0], oldEntries[0])
 	return compareModel, tea.Batch(
 		compareModel.Init(),
 	)
