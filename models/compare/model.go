@@ -13,27 +13,27 @@ import (
 )
 
 type Model struct {
-	width        int
-	height       int
-	largerDir    restic.DirData
-	smallerDir   restic.DirData
-	rootDir      string
-	dirStack     *stack.Stack
-	smallerStack *stack.Stack
-	cursor       int
+	width       int
+	height      int
+	dirNew      restic.DirData
+	dirOld      restic.DirData
+	rootDir     string
+	stackDirNew *stack.Stack
+	stackDirOld *stack.Stack
+	cursor      int
 }
 
-func InitialModel(l, s restic.DirData) Model {
-	dirStack := stack.New()
-	dirStack.Push(l)
-	smallerStack := stack.New()
-	smallerStack.Push(s)
+func InitialModel(dirNew, dirOld restic.DirData) Model {
+	stackDirNew := stack.New()
+	stackDirNew.Push(dirNew)
+	stackDirOld := stack.New()
+	stackDirOld.Push(dirOld)
 	m := Model{
-		largerDir:    l,
-		smallerDir:   s,
-		rootDir:      l.Path,
-		dirStack:     dirStack,
-		smallerStack: smallerStack,
+		dirNew:      dirNew,
+		dirOld:      dirOld,
+		rootDir:     dirNew.Path,
+		stackDirNew: stackDirNew,
+		stackDirOld: stackDirOld,
 	}
 	return m
 }
@@ -57,7 +57,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "j":
 			m.cursor += 1
-			if m.cursor > len(m.largerDir.Children)-1 {
+			if m.cursor > len(m.dirNew.Children)-1 {
 				m.cursor -= 1
 			}
 			return m, nil
@@ -69,37 +69,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 			return m, nil
 		case "l":
-			childDir := m.largerDir.Children[m.cursor]
+			childDir := m.dirNew.Children[m.cursor]
 			// Files or empty dirs
 			if len(childDir.Children) == 0 {
 				return m, nil
 			}
-			m.dirStack.Push(m.largerDir)
-			m.largerDir = childDir
-			eq := findEquivalent(childDir, m.smallerDir.Children)
+			m.stackDirNew.Push(m.dirNew)
+			m.dirNew = childDir
+			eq := findEquivalent(childDir, m.dirOld.Children)
 			if eq == nil {
 				eq = &restic.DirData{}
 			}
-			m.smallerStack.Push(m.smallerDir)
-			m.smallerDir = *eq
+			m.stackDirOld.Push(m.dirOld)
+			m.dirOld = *eq
 			m.cursor = 0
 			return m, nil
 		case "h":
-			if m.dirStack.Len() > 1 {
-				parentDir := m.dirStack.Pop().(restic.DirData)
-				m.largerDir = parentDir
-				smallerDir := m.smallerStack.Pop().(restic.DirData)
-				m.smallerDir = smallerDir
+			if m.stackDirNew.Len() > 1 {
+				parentDir := m.stackDirNew.Pop().(restic.DirData)
+				m.dirNew = parentDir
+				smallerDir := m.stackDirOld.Pop().(restic.DirData)
+				m.dirOld = smallerDir
 			}
 			return m, nil
-
 		default:
-			//m.debug = fmt.Sprintf("%#v", msg.String())
 			return m, nil
 		}
-
 	}
-
 	return m, nil
 }
 
@@ -109,12 +105,12 @@ func (m Model) View() string {
 	output.WriteString(fmt.Sprintf("%s\n\n", m.rootDir))
 
 	linesVisible := 10
-	startIndex := max(min(m.cursor-linesVisible/2, len(m.largerDir.Children)-linesVisible), 0)
-	endIndex := min(len(m.largerDir.Children)-1, startIndex+linesVisible)
+	startIndex := max(min(m.cursor-linesVisible/2, len(m.dirNew.Children)-linesVisible), 0)
+	endIndex := min(len(m.dirNew.Children)-1, startIndex+linesVisible)
 
 	tableData, err := generateStringSlice(
-		m.largerDir.Children[startIndex:endIndex+1],
-		m.smallerDir.Children,
+		m.dirNew.Children[startIndex:endIndex+1],
+		m.dirOld.Children,
 	)
 	if err != nil {
 		panic(err)
@@ -136,12 +132,12 @@ func (m Model) View() string {
 
 	output.WriteString(t.Render())
 
-	output.WriteString(fmt.Sprintf("\n\n%s\n", m.largerDir.Children[m.cursor].Path))
+	output.WriteString(fmt.Sprintf("\n\n%s\n", m.dirNew.Children[m.cursor].Path))
 
 	var footer string
 	//footer += fmt.Sprintf("\nCursor: %d", m.cursor)
-	//footer += fmt.Sprintf("\nStackDir: %#v", m.dirStack)
-	//footer += fmt.Sprintf("\nStackSmaller: %#v", m.smallerStack)
+	//footer += fmt.Sprintf("\nStackDir: %#v", m.stackDirNew)
+	//footer += fmt.Sprintf("\nStackSmaller: %#v", m.stackDirOld)
 	//footer += fmt.Sprintf("\nDEBUG: %#v", tableData)
 	output.WriteString(footer)
 

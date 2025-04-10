@@ -10,57 +10,42 @@ import (
 )
 
 type Model struct {
-	prevModel tea.Model
-
-	snapshots []restic.Snapshot
-	first     int
-	second    int
-	cursor    int
-
-	debug string
+	snapshots   []restic.Snapshot
+	snapshotNew int
+	snapshotOld int
+	cursor      int
+	debug       string
 }
 
 type SnapshotSelectionMsg struct {
-	first  restic.Snapshot
-	second restic.Snapshot
+	Newer restic.Snapshot
+	Older restic.Snapshot
 }
 
-func (m Model) advaceToCompare() (tea.Model, tea.Cmd) {
-	entries, err := restic.GetDirEntries(m.snapshots[m.first].Path)
+func (m Model) advanceToCompare() (tea.Model, tea.Cmd) {
+	newEntries, err := restic.GetDirEntries(m.snapshots[m.snapshotNew].Path)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("error getting dir newEntries: %w", err))
 	}
-	if len(entries) != 1 {
-		panic("Expected 1 entry")
-	}
-	entries2, err := restic.GetDirEntries(m.snapshots[m.second].Path)
+	oldEntries, err := restic.GetDirEntries(m.snapshots[m.snapshotOld].Path)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("error getting dir newEntries: %w", err))
 	}
-	if len(entries2) != 1 {
-		panic("Expected 1 entry")
+	if len(newEntries) != 1 || len(oldEntries) != 1 {
+		panic(fmt.Errorf("root directory should contain 1 child: %w", err))
 	}
-	compareModel := compare.InitialModel(entries[0], entries2[0])
-
+	compareModel := compare.InitialModel(newEntries[0], oldEntries[0])
 	return compareModel, tea.Batch(
 		compareModel.Init(),
-		// m.prevModel.Init(),
-		// more commands
-		//func() tea.Msg {
-		//	return SnapshotSelectionMsg{
-		//		first:  m.snapshots[m.first],
-		//		second: m.snapshots[m.second],
-		//	}
 	)
 }
 
 func InitialModel(s []restic.Snapshot) Model {
 	m := Model{
-		//prevModel: prevModel,
-		snapshots: s,
-		first:     -1,
-		second:    -1,
-		cursor:    len(s) - 1,
+		snapshots:   s,
+		snapshotNew: -1,
+		snapshotOld: -1,
+		cursor:      len(s) - 1,
 	}
 	return m
 }
@@ -68,63 +53,48 @@ func InitialModel(s []restic.Snapshot) Model {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		tea.ClearScreen,
-		// func() tea.Msg {
-		// 	return tea.WindowSizeMsg{Width: m.width, Height: m.height}
-		// },
 	)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
-	// Is it a key press?
 	case tea.KeyMsg:
-
-		// Cool, what was the actual key pressed?
 		switch msg.String() {
-
-		// These keys should exit the program.
 		case "ctrl+c", "q":
 			return m, tea.Quit
-
 		case "j":
 			m.cursor += 1
 			if m.cursor > len(m.snapshots)-1 {
 				m.cursor -= 1
 			}
 			return m, nil
-
 		case "k":
 			m.cursor -= 1
 			if m.cursor < 0 {
 				m.cursor += 1
 			}
 			return m, nil
-
 		case " ":
-			if m.first == -1 {
-				m.first = m.cursor
-			} else if m.first != m.cursor {
-				m.second = m.cursor
+			if m.snapshotNew == -1 {
+				m.snapshotNew = m.cursor
+			} else if m.snapshotNew != m.cursor {
+				m.snapshotOld = m.cursor
 			}
 			return m, nil
 		case "backspace":
-			m.first = -1
-			m.second = -1
+			m.snapshotNew = -1
+			m.snapshotOld = -1
 			return m, nil
 		case "enter":
-			if m.first == -1 || m.second == -1 {
+			if m.snapshotNew == -1 || m.snapshotOld == -1 {
 				return m, nil
 			}
-			return m.advaceToCompare()
-
+			return m.advanceToCompare()
 		default:
 			m.debug = fmt.Sprintf("%#v", msg.String())
 			return m, nil
 		}
-
 	}
-
 	return m, nil
 }
 
@@ -133,9 +103,9 @@ func (m Model) View() string {
 
 	for index, s := range m.snapshots {
 		var lineEnd = ""
-		if m.first == index {
+		if m.snapshotNew == index {
 			lineEnd = " [1]"
-		} else if m.second == index {
+		} else if m.snapshotOld == index {
 			lineEnd = " [2]"
 		}
 
@@ -147,11 +117,11 @@ func (m Model) View() string {
 	}
 
 	var footer string
-	if m.first != -1 {
-		footer += fmt.Sprintf("\n%s %s", "[1]", m.snapshots[m.first].Path)
+	if m.snapshotNew != -1 {
+		footer += fmt.Sprintf("\n%s %s", "[1]", m.snapshots[m.snapshotNew].Path)
 	}
-	if m.second != -1 {
-		footer += fmt.Sprintf("\n%s %s", "[2]", m.snapshots[m.second].Path)
+	if m.snapshotOld != -1 {
+		footer += fmt.Sprintf("\n%s %s", "[2]", m.snapshots[m.snapshotOld].Path)
 	}
 	output.WriteString(footer)
 

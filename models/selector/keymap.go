@@ -18,8 +18,8 @@ func (k keymap) ShortHelp() []key.Binding {
 // key.Map interface.
 func (k keymap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Exit, k.Help}, // first column
-		{k.Quit},         // second column
+		{k.Exit, k.Help}, // Newer column
+		{k.Quit},         // Older column
 	}
 }
 
