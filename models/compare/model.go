@@ -6,7 +6,7 @@ import (
 	"golang.design/x/clipboard"
 	"math"
 	"path/filepath"
-	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -15,14 +15,20 @@ import (
 	"github.com/dustin/go-humanize"
 )
 
+type Row struct {
+	dirA    *restic.DirData
+	dirB    *restic.DirData
+	absDiff uint64
+	diff    int
+}
+
 type Model struct {
 	prevModel tea.Model
 	width     int
 	height    int
 
 	metadata restic.SnapshotsMetadata
-	dirNew   restic.DirData
-	dirOld   restic.DirData
+	rows     []Row
 	table    table.Model
 
 	clipboard []string
@@ -34,12 +40,12 @@ func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld restic.
 		{Title: "Old", Width: 20},
 		{Title: "Diff", Width: 10},
 	}
+	rows := CreateRows(&dirNew, &dirOld, metadata)
 	m := Model{
 		prevModel: prevModel,
 		width:     width,
 		height:    height,
-		dirNew:    dirNew,
-		dirOld:    dirOld,
+		rows:      rows,
 		metadata:  metadata,
 		table: table.New(
 			table.WithColumns(columns),
@@ -52,7 +58,7 @@ func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld restic.
 }
 
 func (m *Model) updateTable(cursor int) *Model {
-	rows, err := generateStringSlice(m.dirNew, m.dirOld)
+	rows, err := generateStringSlice(m.rows)
 	if err != nil {
 		panic(err)
 	}
@@ -97,16 +103,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "l":
-			nextNewDir := m.dirNew.Children[m.table.Cursor()]
-			// Files or empty dirs
+			nextNewDir := m.rows[m.table.Cursor()].dirA
+			// Don't try to advance if is an empty directory or a file
 			if len(nextNewDir.Children) == 0 {
 				return m, nil
 			}
-			nextOldDir := findEquivalent(nextNewDir, m.dirOld.Children)
-			if nextOldDir == nil {
-				nextOldDir = &restic.DirData{}
-			}
-			nextModel := InitialModel(m, m.width, m.height, nextNewDir, *nextOldDir, m.metadata)
+			nextOldDir := m.rows[m.table.Cursor()].dirB
+			nextModel := InitialModel(m, m.width, m.height, *nextNewDir, *nextOldDir, m.metadata)
 			return nextModel, nextModel.Init()
 		case "h":
 			// Notifies if the window have changed size
@@ -161,77 +164,85 @@ func (m *Model) metadataView() string {
 
 func (m *Model) updateClipboard() []string {
 	c := []string{
-		m.dirNew.Children[m.table.Cursor()].Path,
-		m.dirOld.Children[m.table.Cursor()].Path,
+		m.rows[m.table.Cursor()].dirA.Path,
+		m.rows[m.table.Cursor()].dirB.Path,
 	}
-	fileSystemPath, err := filepath.Rel(m.metadata.NewerFullPath, m.dirNew.Children[m.table.Cursor()].Path)
+	fileSystemPath, err := filepath.Rel(m.metadata.NewerFullPath, m.rows[m.table.Cursor()].dirA.Path)
 	if err == nil {
 		c = append(c, "/"+fileSystemPath)
 	}
 	return c
 }
 
-func generateStringSlice(newer, older restic.DirData) ([]table.Row, error) {
-	type TableData struct {
-		newer   restic.DirData
-		older   restic.DirData
-		absDiff uint64
-		diff    int
-	}
-	var data []TableData
-	for i := range len(newer.Children) {
-		n := newer.Children[i]
-		eq := findEquivalent(n, older.Children)
-		if eq == nil {
-			eq = &restic.DirData{Size: 0, PathReadable: "<???>"}
-		}
-		diff := int(n.Size) - int(eq.Size)
-		absDiff := uint64(math.Abs(float64(diff)))
-		data = append(data, TableData{n, *eq, absDiff, diff})
-	}
-
-	for i := range len(older.Children) {
-		o := older.Children[i]
-		// Skip entries already in "newer"
-		if slices.ContainsFunc(newer.Children, func(e restic.DirData) bool {
-			return o.PathReadable == e.PathReadable
-		}) {
-			continue
-		}
-		eq := findEquivalent(o, newer.Children)
-		if eq == nil {
-			eq = &restic.DirData{Size: 0, PathReadable: "<???>"}
-		}
-		diff := int(o.Size) - int(eq.Size)
-		absDiff := uint64(math.Abs(float64(diff)))
-		data = append(data, TableData{o, *eq, absDiff, diff})
-	}
-
-	// TODO: sort by diff
-	//slices.SortFunc(data, func(a, b TableData) int {
-	//	return int(b.diff - a.diff)
-	//})
-
+func generateStringSlice(rows []Row) ([]table.Row, error) {
 	var t []table.Row
-	for _, d := range data {
+	for _, r := range rows {
 		signStr := "+"
-		if d.diff < 0 {
+		if r.diff < 0 {
 			signStr = "-"
 		}
-		diffStr := fmt.Sprintf("%s%s", signStr, humanize.Bytes(d.absDiff))
-		newerStr := fmt.Sprintf("%s %s", d.newer.SizeReadable, d.newer.PathReadable)
-		eqStr := fmt.Sprintf("%s %s", d.older.SizeReadable, d.older.PathReadable)
+		diffStr := fmt.Sprintf("%s%s", signStr, humanize.Bytes(r.absDiff))
+		newerStr := fmt.Sprintf("%s %s", r.dirA.SizeReadable, r.dirA.PathReadable)
+		eqStr := fmt.Sprintf("%s %s", r.dirB.SizeReadable, r.dirB.PathReadable)
 		t = append(t, []string{newerStr, eqStr, diffStr})
 	}
 	return t, nil
 }
+func (r Row) GetDiff() string {
+	return ""
+}
 
-func findEquivalent(like restic.DirData, options []restic.DirData) *restic.DirData {
-	for _, option := range options {
-		if option.PathReadable == like.PathReadable {
-			return &option
+func CreateRows(dirA, dirB *restic.DirData, metadata restic.SnapshotsMetadata) []Row {
+	dumbDir := restic.DirData{
+		Path:         "???",
+		PathReadable: "???",
+		Size:         0,
+	}
+
+	// Generate maps for each directory
+	mapA := make(map[string]restic.DirData)
+	mapB := make(map[string]restic.DirData)
+	for _, a := range dirA.Children {
+		p, err := filepath.Rel(metadata.NewerFullPath, a.Path)
+		if err != nil {
+			panic(err)
+		}
+		mapA[p] = a
+	}
+	for _, b := range dirB.Children {
+		p, err := filepath.Rel(metadata.OlderFullPath, b.Path)
+		if err != nil {
+			panic(err)
+		}
+		mapB[p] = b
+	}
+	var rows []Row
+	seen := make(map[string]bool)
+
+	// Generate unique entries for elements on A and B
+	for path, a := range mapA {
+		seen[path] = true
+		if b, ok := mapB[path]; ok {
+			diff := int(a.Size) - int(b.Size)
+			absDiff := uint64(math.Abs(float64(diff)))
+			rows = append(rows, Row{dirA: &a, dirB: &b, diff: diff, absDiff: absDiff})
+		} else {
+			diff := int(a.Size)
+			absDiff := uint64(math.Abs(float64(a.Size)))
+			rows = append(rows, Row{dirA: &a, dirB: &dumbDir, diff: diff, absDiff: absDiff})
 		}
 	}
-	return nil
+	for path, b := range mapB {
+		if seen[path] {
+			continue
+		}
+		diff := -int(b.Size)
+		absDiff := uint64(math.Abs(float64(b.Size)))
+		rows = append(rows, Row{dirA: &dumbDir, dirB: &b, diff: diff, absDiff: absDiff})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].diff > rows[j].diff
+	})
 
+	return rows
 }
