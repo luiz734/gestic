@@ -146,7 +146,7 @@ func (m *Model) View() string {
 	output.WriteString(m.metadataView())
 
 	var footer string
-	footer += fmt.Sprintf("\nCursor: %d", m.table.Cursor())
+	//footer += fmt.Sprintf("\nCursor: %d", m.table.Cursor())
 	//footer += fmt.Sprintf("\nDEBUG: %#v", tableData)
 	output.WriteString(footer)
 

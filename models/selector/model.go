@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gestic/models/compare"
 	"gestic/restic"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"strings"
 
@@ -17,14 +18,16 @@ type Model struct {
 	snapshotNew int
 	snapshotOld int
 	table       table.Model
+	spinner     spinner.Model
+	waiting     bool
 }
 
 type SnapshotSelectionMsg struct {
-	Newer restic.Snapshot
-	Older restic.Snapshot
+	Newer restic.DirData
+	Older restic.DirData
 }
 
-func (m Model) advanceToCompare() (tea.Model, tea.Cmd) {
+func (m Model) LoadSnapshots() tea.Msg {
 	newEntries, err := restic.GetDirEntries(m.snapshots[m.snapshotNew].Path)
 	if err != nil {
 		panic(fmt.Errorf("error getting dir newEntries: %w", err))
@@ -36,18 +39,11 @@ func (m Model) advanceToCompare() (tea.Model, tea.Cmd) {
 	if len(newEntries) != 1 || len(oldEntries) != 1 {
 		panic(fmt.Errorf("root directory should contain 1 child: %w", err))
 	}
-	metadata := restic.SnapshotsMetadata{
-		NewerFullPath: m.snapshots[m.snapshotNew].Path,
-		NewerId:       m.snapshots[m.snapshotNew].Id,
-		OlderFullPath: m.snapshots[m.snapshotOld].Path,
-		OlderId:       m.snapshots[m.snapshotOld].Id,
+	return SnapshotSelectionMsg{
+		Newer: newEntries[0],
+		Older: oldEntries[0],
 	}
-	compareModel := compare.InitialModel(nil, m.width, m.height, newEntries[0], oldEntries[0], metadata)
-	return compareModel, tea.Batch(
-		compareModel.Init(),
-	)
 }
-
 func (m Model) UpdateRows() []table.Row {
 	var t []table.Row
 
@@ -76,6 +72,8 @@ func InitialModel(s []restic.Snapshot) Model {
 		{Title: "Date", Width: 20},
 		{Title: "Size", Width: 10},
 	}
+	spin := spinner.New()
+	spin.Spinner = spinner.Line
 	m := Model{
 		snapshots:   s,
 		snapshotNew: -1,
@@ -85,6 +83,8 @@ func InitialModel(s []restic.Snapshot) Model {
 			table.WithFocused(true),
 			table.WithHeight(10),
 		),
+		spinner: spin,
+		waiting: false,
 	}
 	m.table.SetRows(m.UpdateRows())
 	m.table.GotoBottom()
@@ -98,10 +98,25 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	var cmd tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+	case SnapshotSelectionMsg:
+		metadata := restic.SnapshotsMetadata{
+			NewerFullPath: m.snapshots[m.snapshotNew].Path,
+			NewerId:       m.snapshots[m.snapshotNew].Id,
+			OlderFullPath: m.snapshots[m.snapshotOld].Path,
+			OlderId:       m.snapshots[m.snapshotOld].Id,
+		}
+		compareModel := compare.InitialModel(nil, m.width, m.height, msg.Newer, msg.Older, metadata)
+		return compareModel, tea.Batch(
+			compareModel.Init(),
+		)
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -123,12 +138,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.snapshotNew == -1 || m.snapshotOld == -1 {
 				return m, nil
 			}
-			return m.advanceToCompare()
+			m.waiting = true
+			return m, tea.Batch(m.spinner.Tick, m.LoadSnapshots)
 		}
 	}
-	var cmd tea.Cmd
 	m.table, cmd = m.table.Update(msg)
-	return m, cmd
+	cmds = append(cmds, cmd)
+	m.spinner, cmd = m.spinner.Update(msg)
+	cmds = append(cmds, cmd)
+	return m, tea.Batch(cmds...)
 }
 
 func (m Model) View() string {
@@ -145,6 +163,10 @@ func (m Model) View() string {
 		footer += fmt.Sprintf("\n%s %s", "[2]", m.snapshots[m.snapshotOld].Path)
 	}
 	output.WriteString(footer)
+
+	if m.waiting {
+		output.WriteString(fmt.Sprintf("\n\n%s Loading repositories", m.spinner.View()))
+	}
 
 	return output.String()
 }
