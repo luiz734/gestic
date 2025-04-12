@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"gestic/models/compare"
 	"gestic/restic"
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"strings"
@@ -12,6 +14,8 @@ import (
 )
 
 type Model struct {
+	help        help.Model
+	keyMap      keymap
 	width       int
 	height      int
 	snapshots   []restic.Snapshot
@@ -75,6 +79,8 @@ func InitialModel(s []restic.Snapshot) Model {
 	spin := spinner.New()
 	spin.Spinner = spinner.Line
 	m := Model{
+		help:        help.New(),
+		keyMap:      DefaultKeyMap(),
 		snapshots:   s,
 		snapshotNew: -1,
 		snapshotOld: -1,
@@ -118,23 +124,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
+		switch {
+		case key.Matches(msg, m.keyMap.Quit):
 			return m, tea.Quit
-		case " ":
+		case key.Matches(msg, m.keyMap.Help):
+			m.help.ShowAll = !m.help.ShowAll
+			return m, nil
+		case key.Matches(msg, m.keyMap.Select):
 			if m.snapshotNew == -1 {
 				m.snapshotNew = m.table.Cursor()
-			} else if m.snapshotNew != m.table.Cursor() {
+			} else if m.snapshotNew != m.table.Cursor() && m.table.Cursor() < m.snapshotNew {
 				m.snapshotOld = m.table.Cursor()
 			}
 			m.table.SetRows(m.UpdateRows())
 			return m, nil
-		case "backspace":
+		case key.Matches(msg, m.keyMap.Clear):
 			m.snapshotNew = -1
 			m.snapshotOld = -1
 			m.table.SetRows(m.UpdateRows())
 			return m, nil
-		case "enter":
+		case key.Matches(msg, m.keyMap.Accept):
 			if m.snapshotNew == -1 || m.snapshotOld == -1 {
 				return m, nil
 			}
@@ -165,8 +174,11 @@ func (m Model) View() string {
 	output.WriteString(footer)
 
 	if m.waiting {
-		output.WriteString(fmt.Sprintf("\n\n%s Loading repositories", m.spinner.View()))
+		output.WriteString(fmt.Sprintf("\n\n%s Loading repositories\n", m.spinner.View()))
 	}
+
+	output.WriteString("\n")
+	output.WriteString(m.help.View(m.keyMap))
 
 	return output.String()
 }

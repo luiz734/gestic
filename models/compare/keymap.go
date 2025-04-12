@@ -3,23 +3,22 @@ package compare
 import "github.com/charmbracelet/bubbles/key"
 
 type keymap struct {
-	Exit key.Binding
-	Quit key.Binding
-	Help key.Binding
+	NextDir   key.Binding
+	PrevDir   key.Binding
+	Clipboard key.Binding
+	Quit      key.Binding
+	Help      key.Binding
 }
 
-// ShortHelp returns keybindings to be shown in the mini help view. It's part
-// of the key.Map interface.
 func (k keymap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Exit, k.Help, k.Quit}
+	return []key.Binding{k.NextDir, k.PrevDir, k.Clipboard}
 }
 
-// FullHelp returns keybindings for the expanded help view. It's part of the
-// key.Map interface.
 func (k keymap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Exit, k.Help}, // first column
-		{k.Quit},         // second column
+		{k.NextDir, k.Help}, // first column
+		{k.PrevDir, k.Quit}, // second column
+		{k.Clipboard},
 	}
 }
 
@@ -31,12 +30,20 @@ func DefaultKeyMap() keymap {
 			key.WithHelp("?", "toggle help"),
 		),
 		Quit: key.NewBinding(
-			key.WithKeys("ctrl+c"),
+			key.WithKeys("ctrl+c", "q"),
 			key.WithHelp("ctrl+c", "quit"),
 		),
-		Exit: key.NewBinding(
-			key.WithKeys("esc", "i"),
-			key.WithHelp("Esc/i", "go back"),
+		NextDir: key.NewBinding(
+			key.WithKeys("l", "right", "enter"),
+			key.WithHelp("l/right", "Open"),
+		),
+		PrevDir: key.NewBinding(
+			key.WithKeys("h", "left", "backspace"),
+			key.WithHelp("h/left", "Back"),
+		),
+		Clipboard: key.NewBinding(
+			key.WithKeys("1", "2", "3"),
+			key.WithHelp("1,2,3", "Copy"),
 		),
 	}
 }

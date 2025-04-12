@@ -3,23 +3,22 @@ package selector
 import "github.com/charmbracelet/bubbles/key"
 
 type keymap struct {
-	Exit key.Binding
-	Quit key.Binding
-	Help key.Binding
+	Quit   key.Binding
+	Help   key.Binding
+	Select key.Binding
+	Clear  key.Binding
+	Accept key.Binding
 }
 
-// ShortHelp returns keybindings to be shown in the mini help view. It's part
-// of the key.Map interface.
 func (k keymap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Exit, k.Help, k.Quit}
+	return []key.Binding{k.Select, k.Clear, k.Accept}
 }
 
-// FullHelp returns keybindings for the expanded help view. It's part of the
-// key.Map interface.
 func (k keymap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Exit, k.Help}, // Newer column
-		{k.Quit},         // Older column
+		{k.Select, k.Help}, // first column
+		{k.Clear, k.Quit},  // second column
+		{k.Accept},
 	}
 }
 
@@ -31,12 +30,20 @@ func DefaultKeyMap() keymap {
 			key.WithHelp("?", "toggle help"),
 		),
 		Quit: key.NewBinding(
-			key.WithKeys("ctrl+c"),
+			key.WithKeys("ctrl+c", "q"),
 			key.WithHelp("ctrl+c", "quit"),
 		),
-		Exit: key.NewBinding(
-			key.WithKeys("esc", "i"),
-			key.WithHelp("Esc/i", "go back"),
+		Select: key.NewBinding(
+			key.WithKeys(" "),
+			key.WithHelp("<space>", "Select"),
+		),
+		Clear: key.NewBinding(
+			key.WithKeys("backspace"),
+			key.WithHelp("<backspace>", "Clear"),
+		),
+		Accept: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("<enter>", "Open repositories"),
 		),
 	}
 }

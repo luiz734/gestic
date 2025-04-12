@@ -3,6 +3,8 @@ package compare
 import (
 	"fmt"
 	"gestic/restic"
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"golang.design/x/clipboard"
 	"math"
 	"path/filepath"
@@ -24,6 +26,8 @@ type Row struct {
 
 type Model struct {
 	prevModel tea.Model
+	help      help.Model
+	keyMap    keymap
 	width     int
 	height    int
 
@@ -43,6 +47,8 @@ func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld restic.
 	rows := CreateRows(&dirNew, &dirOld, metadata)
 	m := Model{
 		prevModel: prevModel,
+		help:      help.New(),
+		keyMap:    DefaultKeyMap(),
 		width:     width,
 		height:    height,
 		rows:      rows,
@@ -99,10 +105,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateTable(oldCursor), nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
+		switch {
+		case key.Matches(msg, m.keyMap.Quit):
 			return m, tea.Quit
-		case "l":
+		case key.Matches(msg, m.keyMap.Help):
+			m.help.ShowAll = !m.help.ShowAll
+			return m, nil
+		case key.Matches(msg, m.keyMap.NextDir):
 			nextNewDir := m.rows[m.table.Cursor()].dirA
 			// Don't try to advance if is an empty directory or a file
 			if len(nextNewDir.Children) == 0 {
@@ -111,14 +120,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			nextOldDir := m.rows[m.table.Cursor()].dirB
 			nextModel := InitialModel(m, m.width, m.height, *nextNewDir, *nextOldDir, m.metadata)
 			return nextModel, nextModel.Init()
-		case "h":
+		case key.Matches(msg, m.keyMap.PrevDir):
 			// Notifies if the window have changed size
 			if m.prevModel != nil {
 				return m.prevModel, func() tea.Msg {
 					return tea.WindowSizeMsg{Width: m.width, Height: m.height}
 				}
 			}
-		case "1", "2", "3":
+		case key.Matches(msg, m.keyMap.Clipboard):
 			targetClipboard, err := strconv.Atoi(msg.String())
 			if err != nil {
 				panic(err)
@@ -144,11 +153,8 @@ func (m *Model) View() string {
 
 	output.WriteString(m.table.View())
 	output.WriteString(m.metadataView())
-
-	var footer string
-	//footer += fmt.Sprintf("\nCursor: %d", m.table.Cursor())
-	//footer += fmt.Sprintf("\nDEBUG: %#v", tableData)
-	output.WriteString(footer)
+	output.WriteString("\n")
+	output.WriteString(m.help.View(m.keyMap))
 
 	return output.String()
 }
@@ -187,9 +193,6 @@ func generateStringSlice(rows []Row) ([]table.Row, error) {
 		t = append(t, []string{newerStr, eqStr, diffStr})
 	}
 	return t, nil
-}
-func (r Row) GetDiff() string {
-	return ""
 }
 
 func CreateRows(dirA, dirB *restic.DirData, metadata restic.SnapshotsMetadata) []Row {
