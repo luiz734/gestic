@@ -31,22 +31,47 @@ type SnapshotSelectionMsg struct {
 	Older restic.DirData
 }
 
+func GetEntriesAsync(dirPath string, c chan []restic.DirData, e chan error) {
+	entries, err := restic.GetDirEntries(dirPath)
+	if err != nil {
+		e <- fmt.Errorf("error getting dir newEntries: %w", err)
+	}
+	if len(entries) != 1 {
+		e <- fmt.Errorf("root directory  of %s should contain 1 childen", dirPath)
+	}
+	c <- entries
+}
+
 func (m Model) LoadSnapshots() tea.Msg {
-	newEntries, err := restic.GetDirEntries(m.snapshots[m.snapshotNew].Path)
-	if err != nil {
-		panic(fmt.Errorf("error getting dir newEntries: %w", err))
+	newChan := make(chan []restic.DirData)
+	newErrChan := make(chan error)
+	oldChan := make(chan []restic.DirData)
+	oldErrChan := make(chan error)
+
+	var newEntries []restic.DirData
+	var oldEntries []restic.DirData
+
+	go GetEntriesAsync(m.snapshots[m.snapshotNew].Path, newChan, newErrChan)
+	go GetEntriesAsync(m.snapshots[m.snapshotOld].Path, oldChan, oldErrChan)
+
+	for i := 0; i < 2; i++ {
+		select {
+		case entries := <-newChan:
+			newEntries = entries
+		case err := <-newErrChan:
+			panic(fmt.Sprintf("Failed to get new entries: %v", err))
+		case entries := <-oldChan:
+			oldEntries = entries
+		case err := <-oldErrChan:
+			panic(fmt.Sprintf("Failed to get old entries: %v", err))
+		}
 	}
-	oldEntries, err := restic.GetDirEntries(m.snapshots[m.snapshotOld].Path)
-	if err != nil {
-		panic(fmt.Errorf("error getting dir newEntries: %w", err))
-	}
-	if len(newEntries) != 1 || len(oldEntries) != 1 {
-		panic(fmt.Errorf("root directory should contain 1 child: %w", err))
-	}
+
 	return SnapshotSelectionMsg{
 		Newer: newEntries[0],
 		Older: oldEntries[0],
 	}
+
 }
 func (m Model) UpdateRows() []table.Row {
 	var t []table.Row
