@@ -2,14 +2,21 @@ package main
 
 import (
 	"fmt"
+	"gestic/config"
 	"gestic/models/selector"
 	"gestic/restic"
-	tea "github.com/charmbracelet/bubbletea"
 	"os"
+
+	"github.com/alecthomas/kong"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func main() {
-	snapshots, err := restic.GetSnapshopts()
+
+	var cli config.CLI
+	_ = kong.Parse(&cli)
+
+	snapshots, err := restic.GetSnapshots(cli.RepoPath)
 	if err != nil {
 		panic(err)
 	}

@@ -1,7 +1,6 @@
 package restic
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -30,22 +29,22 @@ func (s Snapshot) String() string {
 	return fmt.Sprintf("%s\t%s\t%s", s.Id, s.Date.Format(layout), s.SizeStr)
 }
 
-func GetSnapshopts() ([]Snapshot, error) {
+func GetSnapshots(mountPath string) ([]Snapshot, error) {
 	var err error
-	// TODO: remove hardcoded repo
-	//var repoHome = "/home/tohru/tmp/test_repo"
-	var repoHome = "/mnt/storage/__restic"
-	args := []string{"-r", repoHome, "snapshots"}
+	if _, err := os.Stat(mountPath); err != nil {
+		return []Snapshot{}, fmt.Errorf("mount directory not found: %w", err)
+	}
+
+	args := []string{"-r", mountPath, "snapshots"}
 	var cmd *exec.Cmd
 	if cmd = exec.Command("restic", args...); cmd == nil {
-		return []Snapshot{}, fmt.Errorf("Can't execute restic command: %w", err)
+		return []Snapshot{}, fmt.Errorf("can't execute restic command: %w", err)
 	}
-	// Temporary key id: cb7483d865dc145c31176c6bfecc299d1381b82a40adb0ed4cb9ff5cd53f5269
-	key := "123"
-	var stdin bytes.Buffer
-	stdin.Write([]byte(key))
-	cmd.Stdin = &stdin
-	// cmd.Stdin = os.Stdin
+	//key := "123"
+	//var stdin bytes.Buffer
+	//stdin.Write([]byte(key))
+	//cmd.Stdin = &stdin
+	cmd.Stdin = os.Stdin
 	// cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
