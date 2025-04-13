@@ -16,7 +16,7 @@ func main() {
 	var cli config.CLI
 	_ = kong.Parse(&cli)
 
-	snapshots, err := restic.GetSnapshots(cli.RepoPath)
+	snapshots, err := restic.GetSnapshots(cli.RepoPath, cli.MountPath)
 	if err != nil {
 		panic(err)
 	}

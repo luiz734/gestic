@@ -29,13 +29,13 @@ func (s Snapshot) String() string {
 	return fmt.Sprintf("%s\t%s\t%s", s.Id, s.Date.Format(layout), s.SizeStr)
 }
 
-func GetSnapshots(mountPath string) ([]Snapshot, error) {
+func GetSnapshots(repoPath, mountPath string) ([]Snapshot, error) {
 	var err error
-	if _, err := os.Stat(mountPath); err != nil {
+	if _, err := os.Stat(repoPath); err != nil {
 		return []Snapshot{}, fmt.Errorf("mount directory not found: %w", err)
 	}
 
-	args := []string{"-r", mountPath, "snapshots"}
+	args := []string{"-r", repoPath, "snapshots"}
 	var cmd *exec.Cmd
 	if cmd = exec.Command("restic", args...); cmd == nil {
 		return []Snapshot{}, fmt.Errorf("can't execute restic command: %w", err)
@@ -50,15 +50,15 @@ func GetSnapshots(mountPath string) ([]Snapshot, error) {
 
 	output, err := cmd.Output()
 	if err != nil {
-		return []Snapshot{}, fmt.Errorf("Error return from restic command: %w", err)
+		return []Snapshot{}, fmt.Errorf("error return from restic command: %w", err)
 	}
 	snapshots, err := parseCmdSnapshots(output)
 	if err != nil {
-		return []Snapshot{}, fmt.Errorf("Parsing command snapshot: %w", err)
+		return []Snapshot{}, fmt.Errorf("parsing command snapshot: %w", err)
 	}
-	snapshots, err = checkDirectoriesConsistency(snapshots)
+	snapshots, err = checkDirectoriesConsistency(snapshots, mountPath)
 	if err != nil {
-		return []Snapshot{}, fmt.Errorf("Directoy consistency error: %w", err)
+		return []Snapshot{}, fmt.Errorf("directoy consistency error: %w", err)
 	}
 
 	return snapshots, nil
@@ -121,11 +121,15 @@ func snapshotContainsTime(s []Snapshot, t time.Time) int {
 // Checks if the output of `restic snapshots` has a directory
 // associated with each entry. It compares the time for the
 // command output with the filename in the snapshots directory
-func checkDirectoriesConsistency(s []Snapshot) ([]Snapshot, error) {
-	rootDir := "/home/tohru/tmp/restic/snapshots"
+func checkDirectoriesConsistency(s []Snapshot, mountPath string) ([]Snapshot, error) {
+	mountPath = path.Join(mountPath, "snapshots")
+	if _, err := os.Stat(mountPath); err != nil {
+		return []Snapshot{}, fmt.Errorf("mount directory not found: %w", err)
+	}
+
 	dateTimeLayout := "2006-01-02T15:04:05-07:00"
 
-	dirEntries, err := os.ReadDir(rootDir)
+	dirEntries, err := os.ReadDir(mountPath)
 	if err != nil {
 		errMsg := fmt.Errorf("directory missing or not mounted: %w", err)
 		return []Snapshot{}, errMsg
@@ -146,7 +150,7 @@ func checkDirectoriesConsistency(s []Snapshot) ([]Snapshot, error) {
 			errMsg := fmt.Errorf("mismatch entries for snapshot %s", entry.Name())
 			return []Snapshot{}, errMsg
 		}
-		s[index].Path = path.Join(rootDir, entry.Name())
+		s[index].Path = path.Join(mountPath, entry.Name())
 
 	}
 

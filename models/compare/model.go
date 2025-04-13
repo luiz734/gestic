@@ -31,10 +31,9 @@ type Model struct {
 	width     int
 	height    int
 
-	metadata restic.SnapshotsMetadata
-	rows     []Row
-	table    table.Model
-
+	metadata  restic.SnapshotsMetadata
+	rows      []Row
+	table     table.Model
 	clipboard []string
 }
 
@@ -61,16 +60,6 @@ func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld restic.
 	}
 	m = *m.updateTable(-1)
 	return &m
-}
-
-func (m *Model) updateTable(cursor int) *Model {
-	rows, err := generateStringSlice(m.rows)
-	if err != nil {
-		panic(err)
-	}
-	m.table.SetRows(rows)
-	m.table.SetCursor(cursor)
-	return m
 }
 
 func (m *Model) Init() tea.Cmd {
@@ -143,7 +132,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.table, cmd = m.table.Update(msg)
-	// Order matters here
+	// Order matters here?
 	m.clipboard = m.updateClipboard()
 	return m, cmd
 }
@@ -166,6 +155,16 @@ func (m *Model) metadataView() string {
 		output.WriteString(fmt.Sprintf("[%d] %s\n", index+1, c))
 	}
 	return output.String()
+}
+
+func (m *Model) updateTable(cursor int) *Model {
+	rows, err := generateStringSlice(m.rows)
+	if err != nil {
+		panic(err)
+	}
+	m.table.SetRows(rows)
+	m.table.SetCursor(cursor)
+	return m
 }
 
 func (m *Model) updateClipboard() []string {
