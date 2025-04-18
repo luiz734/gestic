@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/dustin/go-humanize"
 	"strings"
 
 	"github.com/charmbracelet/bubbletea"
@@ -149,25 +150,35 @@ func GetEntriesAsync(dirPath string, c chan []restic.DirData, e chan error) {
 	entries, err := restic.GetDirEntries(dirPath)
 	if err != nil {
 		e <- fmt.Errorf("error getting dir newEntries: %w", err)
+		return
 	}
+	// This function should always return a slice with only 1 child
+	// If there is more than one, we create a wrapper
 	if len(entries) != 1 {
-		e <- fmt.Errorf("root directory  of %s should contain 1 childen", dirPath)
+		var childrenSum uint64
+		for _, children := range entries {
+			childrenSum += children.Size
+		}
+		c <- []restic.DirData{
+			{Children: entries, Size: childrenSum, Path: dirPath, SizeReadable: humanize.Bytes(childrenSum), PathReadable: dirPath},
+		}
+		return
+		//e <- fmt.Errorf("root directory  of %s should contain 1 childen", dirPath)
 	}
 	c <- entries
 }
 
 func (m Model) LoadSnapshots() tea.Msg {
-	newChan := make(chan []restic.DirData)
-	newErrChan := make(chan error)
-	oldChan := make(chan []restic.DirData)
-	oldErrChan := make(chan error)
-
-	var newEntries []restic.DirData
-	var oldEntries []restic.DirData
+	newChan := make(chan []restic.DirData, 1)
+	newErrChan := make(chan error, 1)
+	oldChan := make(chan []restic.DirData, 1)
+	oldErrChan := make(chan error, 1)
 
 	go GetEntriesAsync(m.snapshots[m.snapshotNew].Path, newChan, newErrChan)
 	go GetEntriesAsync(m.snapshots[m.snapshotOld].Path, oldChan, oldErrChan)
 
+	var newEntries []restic.DirData
+	var oldEntries []restic.DirData
 	for i := 0; i < 2; i++ {
 		select {
 		case entries := <-newChan:
