@@ -2,6 +2,8 @@
 
 A diff tool for restic snapshots.
 
+![demo](screenshots/demo.gif "demo.gif")
+
 ## Problem
 - Your last [restic](https://github.com/restic/restic) snapshot is `snapshot_old`
 - You make a new snapshot `snapshot_new`
