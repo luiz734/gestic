@@ -5,6 +5,7 @@ import (
 	"gestic/config"
 	"gestic/models/selector"
 	"gestic/restic"
+	"log"
 	"os"
 
 	"github.com/alecthomas/kong"
@@ -12,6 +13,16 @@ import (
 )
 
 func main() {
+
+	if len(os.Getenv("DEBUG")) > 0 {
+		f, err := tea.LogToFile("debug.log", "debug")
+		if err != nil {
+			fmt.Println("fatal:", err)
+			os.Exit(1)
+		}
+		defer f.Close()
+	}
+	log.Println("Application started")
 
 	var cli config.CLI
 	_ = kong.Parse(&cli)
