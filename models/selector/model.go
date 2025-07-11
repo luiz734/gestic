@@ -30,9 +30,9 @@ type Model struct {
 func InitialModel(s []restic.Snapshot) Model {
 	columns := []table.Column{
 		{Title: " ", Width: 1},
-		{Title: "Id", Width: 10},
-		{Title: "Date", Width: 20},
-		{Title: "Size", Width: 10},
+		{Title: "ID", Width: 12},
+		{Title: "DATE", Width: 22},
+		{Title: "SIZE", Width: 12},
 	}
 	spin := spinner.New()
 	spin.Spinner = spinner.Line
@@ -46,6 +46,7 @@ func InitialModel(s []restic.Snapshot) Model {
 			table.WithColumns(columns),
 			table.WithFocused(true),
 			table.WithHeight(10),
+			table.WithStyles(tableStyles),
 		),
 		spinner: spin,
 		waiting: false,
