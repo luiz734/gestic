@@ -17,6 +17,8 @@ import (
 	"github.com/dustin/go-humanize"
 )
 
+const MAX_COL_SIZE = 6
+
 type Row struct {
 	dirA    *restic.DirData
 	dirB    *restic.DirData
@@ -56,6 +58,7 @@ func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld restic.
 			table.WithColumns(columns),
 			table.WithFocused(true),
 			table.WithHeight(10),
+			table.WithStyles(tableStyles),
 		),
 	}
 	m = *m.updateTable(-1)
@@ -80,9 +83,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c2Width := int(math.Ceil(float64(m.width) * 0.4))
 		c3Width := m.width - c1Width - c2Width
 		columns := []table.Column{
-			{Title: fmt.Sprintf("New (%s)", m.metadata.NewerId), Width: c1Width},
-			{Title: fmt.Sprintf("Old (%s)", m.metadata.OlderId), Width: c2Width},
-			{Title: "Diff", Width: c3Width},
+			{Title: fmt.Sprintf("--- New (%s) ---", m.metadata.NewerId), Width: c1Width},
+			{Title: fmt.Sprintf("--- Old (%s) ---", m.metadata.OlderId), Width: c2Width},
+			{Title: "---  Diff ---", Width: c3Width},
 		}
 		// Restore cursor or set to 0 if there is no previous cursor
 		oldCursor := m.table.Cursor()
@@ -90,6 +93,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			table.WithColumns(columns),
 			table.WithFocused(true),
 			table.WithHeight(10),
+			table.WithStyles(tableStyles),
 		)
 		return m.updateTable(oldCursor), nil
 
@@ -179,6 +183,16 @@ func (m *Model) updateClipboard() []string {
 	return c
 }
 
+func renderSizePath(size, path string, col1Length int, isDir bool) (string, error) {
+	s := ""
+	if len(size) > col1Length {
+		return "", fmt.Errorf("Column is to short to fit string %s", size)
+	}
+	s += strings.Repeat(" ", col1Length-len(size))
+	s += size + " " + path
+	return s, nil
+}
+
 func generateStringSlice(rows []Row) ([]table.Row, error) {
 	var t []table.Row
 	for _, r := range rows {
@@ -187,8 +201,14 @@ func generateStringSlice(rows []Row) ([]table.Row, error) {
 			signStr = "-"
 		}
 		diffStr := fmt.Sprintf("%s%s", signStr, humanize.Bytes(r.absDiff))
-		newerStr := fmt.Sprintf("%s %s", r.dirA.SizeReadable, r.dirA.PathReadable)
-		eqStr := fmt.Sprintf("%s %s", r.dirB.SizeReadable, r.dirB.PathReadable)
+		newerStr, err := renderSizePath(r.dirA.SizeReadable, r.dirA.PathReadable, MAX_COL_SIZE, r.dirA.IsDir)
+		if err != nil {
+			return t, fmt.Errorf("can't generate table row for newStr: %w", err)
+		}
+		eqStr, err := renderSizePath(r.dirB.SizeReadable, r.dirB.PathReadable, MAX_COL_SIZE, r.dirB.IsDir)
+		if err != nil {
+			return t, fmt.Errorf("can't generate table row for eqStr: %w", err)
+		}
 		t = append(t, []string{newerStr, eqStr, diffStr})
 	}
 	return t, nil
