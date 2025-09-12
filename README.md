@@ -28,5 +28,5 @@ Use the help on screen to move around and compare snapshots.
 
 ## Installation
 - Clone the repo
-- Use the install script or compile it manually
+- Run `make install`
 

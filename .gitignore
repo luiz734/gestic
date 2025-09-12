@@ -1,3 +1,5 @@
-build
 .idea/
 debug.log
+debug.sh
+gestic
+

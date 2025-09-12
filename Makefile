@@ -1,6 +1,25 @@
-.PHONY: build
+BINARY_NAME=gestic
+INSTALL_DIR=$(HOME)/.local/bin
 
-LDFLAGS = -X main.version=$(shell git describe --tags --always --dirty) -X main.commit=$(shell git rev-parse HEAD)
+VERSION    := $(shell git describe --tags --always --dirty)
+COMMIT     := $(shell git rev-parse HEAD)
+LDFLAGS    = -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT)"
+
+GO=go
+
+.DEFAULT_GOAL := build
+
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o ./build/gestic .
+	@echo "==> Building $(BINARY_NAME)..."
+	$(GO) build $(LDFLAGS) -o $(BINARY_NAME) .
+
+install: build
+	@echo "==> Installing $(BINARY_NAME) to $(INSTALL_DIR)..."
+	@install -d "$(INSTALL_DIR)"
+	@install "$(BINARY_NAME)" "$(INSTALL_DIR)"
+	@echo "Installed successfully!"
+
+clean: 
+	@echo "==> Removing binary..."
+	@rm -f "$(BINARY_NAME)"
