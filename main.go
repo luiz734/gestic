@@ -12,6 +12,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+)
+
 func main() {
 
 	if len(os.Getenv("DEBUG")) > 0 {
@@ -25,7 +30,19 @@ func main() {
 	log.Println("Application started")
 
 	var cli config.CLI
-	_ = kong.Parse(&cli)
+	ctx := kong.Parse(&cli,
+		kong.Name("gestic"),
+		kong.Description("A helper tool to compare restic snapshots."),
+		kong.Vars{
+			"version": fmt.Sprintf("%s (%s)", version, commit),
+		},
+	)
+
+	err := ctx.Run()
+	// We don't use subcommands and are ignoring errors.
+	// if err != nil {
+	// 	ctx.FatalIfErrorf(err)
+	// }
 
 	snapshots, err := restic.GetSnapshots(cli.RepoPath, cli.MountPath)
 	if err != nil {
