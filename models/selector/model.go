@@ -92,10 +92,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keyMap.Select):
 			if m.snapshotNew == -1 {
 				m.snapshotNew = m.table.Cursor()
+				m.table.SetRows(m.UpdateRows())
+				m.table.GotoBottom()
 			} else if m.snapshotNew != m.table.Cursor() && m.table.Cursor() < m.snapshotNew {
 				m.snapshotOld = m.table.Cursor()
+				m.table.SetRows(m.UpdateRows())
 			}
-			m.table.SetRows(m.UpdateRows())
 			return m, nil
 		case key.Matches(msg, m.keyMap.Clear):
 			m.snapshotNew = -1
@@ -203,6 +205,11 @@ func (m Model) UpdateRows() []table.Row {
 	var t []table.Row
 
 	for index, s := range m.snapshots {
+		// Don't show rows after [1]
+		if m.snapshotNew >= 0 && index > m.snapshotNew {
+			break
+		}
+
 		checked := " "
 		switch index {
 		case m.snapshotNew:
