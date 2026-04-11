@@ -3,3 +3,6 @@ debug.log
 debug.sh
 gestic
 todo.txt
+# Added by goreleaser init:
+dist/
+.envrc
