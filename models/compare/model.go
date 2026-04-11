@@ -3,14 +3,15 @@ package compare
 import (
 	"fmt"
 	"gestic/restic"
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"golang.design/x/clipboard"
 	"math"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
+	"golang.design/x/clipboard"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbletea"
@@ -39,13 +40,13 @@ type Model struct {
 	clipboard []string
 }
 
-func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld restic.DirData, metadata restic.SnapshotsMetadata) *Model {
+func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld *restic.DirData, metadata restic.SnapshotsMetadata) *Model {
 	columns := []table.Column{
 		{Title: "New", Width: 20},
 		{Title: "Old", Width: 20},
 		{Title: "Diff", Width: 10},
 	}
-	rows := CreateRows(&dirNew, &dirOld, metadata)
+	rows := CreateRows(dirNew, dirOld, metadata)
 	m := Model{
 		prevModel: prevModel,
 		help:      help.New(),
@@ -111,7 +112,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			nextOldDir := m.rows[m.table.Cursor()].dirB
-			nextModel := InitialModel(m, m.width, m.height, *nextNewDir, *nextOldDir, m.metadata)
+			nextModel := InitialModel(m, m.width, m.height, nextNewDir, nextOldDir, m.metadata)
 			return nextModel, nextModel.Init()
 		case key.Matches(msg, m.keyMap.PrevDir):
 			// Notifies if the window have changed size
@@ -222,8 +223,8 @@ func CreateRows(dirA, dirB *restic.DirData, metadata restic.SnapshotsMetadata) [
 	}
 
 	// Generate maps for each directory
-	mapA := make(map[string]restic.DirData)
-	mapB := make(map[string]restic.DirData)
+	mapA := make(map[string]*restic.DirData)
+	mapB := make(map[string]*restic.DirData)
 	for _, a := range dirA.Children {
 		p, err := filepath.Rel(metadata.NewerFullPath, a.Path)
 		if err != nil {
@@ -247,11 +248,11 @@ func CreateRows(dirA, dirB *restic.DirData, metadata restic.SnapshotsMetadata) [
 		if b, ok := mapB[path]; ok {
 			diff := int(a.Size) - int(b.Size)
 			absDiff := uint64(math.Abs(float64(diff)))
-			rows = append(rows, Row{dirA: &a, dirB: &b, diff: diff, absDiff: absDiff})
+			rows = append(rows, Row{dirA: a, dirB: b, diff: diff, absDiff: absDiff})
 		} else {
 			diff := int(a.Size)
 			absDiff := uint64(math.Abs(float64(a.Size)))
-			rows = append(rows, Row{dirA: &a, dirB: &dumbDir, diff: diff, absDiff: absDiff})
+			rows = append(rows, Row{dirA: a, dirB: &dumbDir, diff: diff, absDiff: absDiff})
 		}
 	}
 	for path, b := range mapB {
@@ -260,7 +261,7 @@ func CreateRows(dirA, dirB *restic.DirData, metadata restic.SnapshotsMetadata) [
 		}
 		diff := -int(b.Size)
 		absDiff := uint64(math.Abs(float64(b.Size)))
-		rows = append(rows, Row{dirA: &dumbDir, dirB: &b, diff: diff, absDiff: absDiff})
+		rows = append(rows, Row{dirA: &dumbDir, dirB: b, diff: diff, absDiff: absDiff})
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		return rows[i].diff > rows[j].diff

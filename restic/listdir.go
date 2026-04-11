@@ -1,84 +1,90 @@
 package restic
 
 import (
-	"fmt"
 	"os"
-	"path"
-	"slices"
+	"path/filepath"
+	"sync"
 
 	"github.com/dustin/go-humanize"
 )
 
 // DirData represents a file or directory with its properties and children.
 type DirData struct {
-	Children     []DirData // List of child entries (empty for files)
-	Path         string    // Full absolute path
-	PathReadable string    // Name relative to parent directory
-	Size         uint64    // Size (file size or sum of children's sizes)
-	SizeReadable string    // Human-readable size
-	IsDir        bool      // True if entry is a directory
+	Children     []*DirData // List of child entries (empty for files)
+	Path         string     // Full absolute path
+	PathReadable string     // Name relative to parent directory
+	Size         int64      // Size (file size or sum of children's sizes)
+	SizeReadable string     // Human-readable size
+	IsDir        bool       // True if entry is a directory
 }
 
 // GetDirEntries returns the immediate entries of dirPath, with directories' Children fields recursively populated.
-func GetDirEntries(dirPath string) ([]DirData, error) {
-	// Read all entries in the directory
-	entries, err := os.ReadDir(dirPath)
-	if err != nil {
-		return nil, fmt.Errorf("can't read dir: %w", err)
-	}
+func GetDirEntries(root string) (*DirData, error) {
+	maxIO := 100
+	semaphore := make(chan struct{}, maxIO)
 
-	var entriesData []DirData
-	for _, e := range entries {
-		// Construct the full path for this entry
-		entryPath := path.Join(dirPath, e.Name())
+	var walk func(string) *DirData
+	walk = func(currentPath string) *DirData {
+		semaphore <- struct{}{}
+		entries, err := os.ReadDir(currentPath)
+		<-semaphore
 
-		// Get file or directory info
-		info, err := e.Info()
 		if err != nil {
-			return nil, fmt.Errorf("can't get entry info: %w", err)
+			//slog.Error("Can't read directory", "path", currentPath)
+			return nil
 		}
 
-		if info.IsDir() {
-			// Directory: recursively get its children
-			children, err := GetDirEntries(entryPath)
-			if err != nil {
-				return nil, err
-			}
-
-			// Calculate total size as the sum of children's sizes
-			var size uint64
-			for _, child := range children {
-				size += child.Size
-			}
-
-			// Create DirData for the directory
-			dirData := DirData{
-				Children:     children,
-				Path:         entryPath,
-				Size:         size,
-				SizeReadable: humanize.Bytes(size),
-				PathReadable: "/" + e.Name(), // Relative to parent, matches original behavior
-				IsDir:        true,
-			}
-			entriesData = append(entriesData, dirData)
-		} else {
-			// File: no children, size is the file size
-			size := uint64(info.Size())
-			dirData := DirData{
-				Children:     []DirData{}, // Empty for files
-				Path:         entryPath,
-				Size:         size,
-				SizeReadable: humanize.Bytes(size),
-				PathReadable: e.Name(), // Relative to parent
-			}
-			entriesData = append(entriesData, dirData)
+		node := &DirData{
+			Path:         currentPath,
+			PathReadable: "/" + filepath.Base(currentPath),
+			Children:     make([]*DirData, 0, len(entries)),
 		}
+
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				nextPath := filepath.Join(currentPath, entry.Name())
+				wg.Add(1)
+
+				go func(path string) {
+					defer wg.Done()
+					childNode := walk(path)
+
+					if childNode != nil {
+						mu.Lock()
+						node.Children = append(node.Children, childNode)
+						node.Size += childNode.Size
+						mu.Unlock()
+					}
+				}(nextPath)
+
+			} else {
+				info, err := entry.Info()
+				if err != nil {
+					//slog.Error("Can't read file", "path", filepath.Join(currentPath, entry.Name()))
+					continue
+				}
+
+				childNode := &DirData{
+					Path:         filepath.Join(currentPath, entry.Name()),
+					PathReadable: entry.Name(),
+					Size:         info.Size(),
+					SizeReadable: humanize.Bytes(uint64(info.Size())),
+				}
+
+				mu.Lock()
+				node.Children = append(node.Children, childNode)
+				node.Size += info.Size()
+				mu.Unlock()
+			}
+		}
+
+		wg.Wait()
+		node.SizeReadable = humanize.Bytes(uint64(node.Size))
+		return node
 	}
 
-	// Sort entries by size in descending order
-	slices.SortFunc(entriesData, func(a, b DirData) int {
-		return int(b.Size) - int(a.Size)
-	})
-
-	return entriesData, nil
+	return walk(root), nil
 }
