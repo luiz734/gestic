@@ -23,3 +23,9 @@ install: build
 clean: 
 	@echo "==> Removing binary..."
 	@rm -f "$(BINARY_NAME)"
+
+manpage: build
+	@echo "==> Generating manpage..."
+	@mkdir -p docs
+	@help2man --no-info --name="A diff tool for restic snapshots" ./$(BINARY_NAME) > docs/$(BINARY_NAME).1
+	@gzip -f -9 docs/$(BINARY_NAME).1

@@ -6,3 +6,4 @@ todo.txt
 # Added by goreleaser init:
 dist/
 .envrc
+docs

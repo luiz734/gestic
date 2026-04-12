@@ -23,7 +23,7 @@ func main() {
 		kong.Name("gestic"),
 		kong.Description("A diff tool for restic snapshots."),
 		kong.Vars{
-			"version": fmt.Sprintf("%s (%s)", version, commit),
+			"version": fmt.Sprintf("gestic %s (%s)", version, commit),
 		},
 	)
 
