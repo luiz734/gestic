@@ -30,7 +30,7 @@ func main() {
 	var cli config.CLI
 	ctx := kong.Parse(&cli,
 		kong.Name("gestic"),
-		kong.Description("A helper tool to compare restic snapshots."),
+		kong.Description("A diff tool for restic snapshots."),
 		kong.Vars{
 			"version": fmt.Sprintf("%s (%s)", version, commit),
 		},

@@ -23,6 +23,10 @@ After mount the repo, you can use the tool:
 
 `gestic --repo /mnt/YOUR_RESTIC_REPO --mount /mnt/YOUR_MOUNT_POINT`
 
+You can also use environment variables:
+- `RESTIC_REPOSITORY`: same as `--repo`
+- `RESTIC_MOUNTPOINT`: same as `--mount`
+
 Use the help on screen to move around and compare snapshots.
 
 
