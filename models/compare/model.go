@@ -2,23 +2,22 @@ package compare
 
 import (
 	"fmt"
-	"gestic/restic"
 	"math"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
+
+	"gestic/models/compare/clip"
+	"gestic/restic"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
-	"golang.design/x/clipboard"
-
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/dustin/go-humanize"
 )
 
-const MAX_COL_SIZE = 6
+const MaxColSize = 6
 
 type Row struct {
 	dirA    *restic.DirData
@@ -29,15 +28,15 @@ type Row struct {
 
 type Model struct {
 	prevModel tea.Model
+	clipModel tea.Model
 	help      help.Model
 	keyMap    keymap
 	width     int
 	height    int
 
-	metadata  restic.SnapshotsMetadata
-	rows      []Row
-	table     table.Model
-	clipboard []string
+	metadata restic.SnapshotsMetadata
+	rows     []Row
+	table    table.Model
 }
 
 func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld *restic.DirData, metadata restic.SnapshotsMetadata) *Model {
@@ -49,6 +48,7 @@ func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld *restic
 	rows := CreateRows(dirNew, dirOld, metadata)
 	m := Model{
 		prevModel: prevModel,
+		clipModel: clip.InitialModel(),
 		help:      help.New(),
 		keyMap:    DefaultKeyMap(),
 		width:     width,
@@ -70,11 +70,11 @@ func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		tea.ClearScreen,
 		func() tea.Msg { return tea.WindowSizeMsg{Width: m.width, Height: m.height} },
+		m.updateClipboardCmd,
 	)
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
@@ -102,9 +102,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, m.keyMap.Quit):
 			return m, tea.Quit
+
 		case key.Matches(msg, m.keyMap.Help):
 			m.help.ShowAll = !m.help.ShowAll
 			return m, nil
+
 		case key.Matches(msg, m.keyMap.NextDir):
 			nextNewDir := m.rows[m.table.Cursor()].dirA
 			// Don't try to advance if is an empty directory or a file
@@ -114,6 +116,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			nextOldDir := m.rows[m.table.Cursor()].dirB
 			nextModel := InitialModel(m, m.width, m.height, nextNewDir, nextOldDir, m.metadata)
 			return nextModel, nextModel.Init()
+
 		case key.Matches(msg, m.keyMap.PrevDir):
 			// Notifies if the window have changed size
 			if m.prevModel != nil {
@@ -121,25 +124,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return tea.WindowSizeMsg{Width: m.width, Height: m.height}
 				}
 			}
-		case key.Matches(msg, m.keyMap.Clipboard):
-			targetClipboard, err := strconv.Atoi(msg.String())
-			if err != nil {
-				panic(err)
-			}
-			targetClipboard -= 1
-			if targetClipboard < len(m.clipboard) {
-				err := clipboard.Init()
-				if err != nil {
-					panic(err)
-				}
-				clipboard.Write(clipboard.FmtText, []byte(m.clipboard[targetClipboard]))
-			}
 		}
 	}
+
+	var cmds []tea.Cmd
+	var cmd tea.Cmd
+
+	oldCursor := m.table.Cursor()
 	m.table, cmd = m.table.Update(msg)
-	// Order matters here?
-	m.clipboard = m.updateClipboard()
-	return m, cmd
+	cmds = append(cmds, cmd)
+
+	// We trigger an update only if the cursor changes
+	if m.table.Cursor() != oldCursor {
+		cmds = append(cmds, m.updateClipboardCmd)
+	}
+
+	m.clipModel, cmd = m.clipModel.Update(msg)
+	cmds = append(cmds, cmd)
+
+	return m, tea.Batch(cmds...)
 }
 
 func (m *Model) View() string {
@@ -156,9 +159,7 @@ func (m *Model) View() string {
 func (m *Model) metadataView() string {
 	var output strings.Builder
 	output.WriteString("\n\n")
-	for index, c := range m.clipboard {
-		output.WriteString(fmt.Sprintf("[%d] %s\n", index+1, c))
-	}
+	output.WriteString(m.clipModel.View())
 	return output.String()
 }
 
@@ -172,16 +173,18 @@ func (m *Model) updateTable(cursor int) *Model {
 	return m
 }
 
-func (m *Model) updateClipboard() []string {
-	c := []string{
-		m.rows[m.table.Cursor()].dirA.Path,
-		m.rows[m.table.Cursor()].dirB.Path,
-	}
+func (m *Model) updateClipboardCmd() tea.Msg {
 	fileSystemPath, err := filepath.Rel(m.metadata.NewerFullPath, m.rows[m.table.Cursor()].dirA.Path)
-	if err == nil {
-		c = append(c, "/"+fileSystemPath)
+	if err != nil {
+		panic(err)
 	}
-	return c
+
+	return clip.UpdateClipboardMsg{
+		First:  m.rows[m.table.Cursor()].dirA.Path,
+		Second: m.rows[m.table.Cursor()].dirB.Path,
+		Third:  "/" + fileSystemPath,
+	}
+
 }
 
 func renderSizePath(size, path string, col1Length int, isDir bool) (string, error) {
@@ -202,11 +205,11 @@ func generateStringSlice(rows []Row) ([]table.Row, error) {
 			signStr = "-"
 		}
 		diffStr := fmt.Sprintf("%s%s", signStr, humanize.Bytes(r.absDiff))
-		newerStr, err := renderSizePath(r.dirA.SizeReadable, r.dirA.PathReadable, MAX_COL_SIZE, r.dirA.IsDir)
+		newerStr, err := renderSizePath(r.dirA.SizeReadable, r.dirA.PathReadable, MaxColSize, r.dirA.IsDir)
 		if err != nil {
 			return t, fmt.Errorf("can't generate table row for newStr: %w", err)
 		}
-		eqStr, err := renderSizePath(r.dirB.SizeReadable, r.dirB.PathReadable, MAX_COL_SIZE, r.dirB.IsDir)
+		eqStr, err := renderSizePath(r.dirB.SizeReadable, r.dirB.PathReadable, MaxColSize, r.dirB.IsDir)
 		if err != nil {
 			return t, fmt.Errorf("can't generate table row for eqStr: %w", err)
 		}

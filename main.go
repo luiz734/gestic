@@ -5,7 +5,6 @@ import (
 	"gestic/config"
 	"gestic/models/selector"
 	"gestic/restic"
-	"log"
 	"os"
 
 	"github.com/alecthomas/kong"
@@ -27,7 +26,6 @@ func main() {
 		}
 		defer f.Close()
 	}
-	log.Println("Application started")
 
 	var cli config.CLI
 	ctx := kong.Parse(&cli,
