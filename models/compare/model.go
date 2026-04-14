@@ -3,6 +3,7 @@ package compare
 import (
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -174,14 +175,33 @@ func (m *Model) updateTable(cursor int) *Model {
 }
 
 func (m *Model) updateClipboardCmd() tea.Msg {
-	fileSystemPath, err := filepath.Rel(m.metadata.NewerFullPath, m.rows[m.table.Cursor()].dirA.Path)
+
+	// This is relative to user files
+	// E.g. /home/myuser/foo/bar
+	userPath := m.metadata.NewerFullPath
+
+	// This is relative to the snapshots
+	// E.g.: /mnt/mountpoint/snapshots/DATE-TIME/home/myuser/foo/bar
+	newerSnapshotPath := m.rows[m.table.Cursor()].dirA.Path
+	olderSnapshotPath := m.rows[m.table.Cursor()].dirB.Path
+
+	// If a path exists only in one directory the other one will be "???"
+	// Since we can't know which one is valid, check the first one
+	// If it is not valid, then the second MUST BE VALID
+	validSnapshotPath := newerSnapshotPath
+	if validSnapshotPath == "???" {
+		validSnapshotPath = olderSnapshotPath
+		userPath = m.metadata.OlderFullPath
+	}
+	fileSystemPath, err := filepath.Rel(userPath, validSnapshotPath)
 	if err != nil {
-		panic(err)
+		_, _ = fmt.Fprintf(os.Stderr, "Could not determine relative path of %s to %s: %s\n", userPath, validSnapshotPath, err.Error())
+		os.Exit(1)
 	}
 
 	return clip.UpdateClipboardMsg{
-		First:  m.rows[m.table.Cursor()].dirA.Path,
-		Second: m.rows[m.table.Cursor()].dirB.Path,
+		First:  newerSnapshotPath,
+		Second: olderSnapshotPath,
 		Third:  "/" + fileSystemPath,
 	}
 
