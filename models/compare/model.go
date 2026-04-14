@@ -19,6 +19,7 @@ import (
 )
 
 const MaxColSize = 6
+const ViewportHeight = 12
 
 type Row struct {
 	dirA    *restic.DirData
@@ -59,7 +60,7 @@ func InitialModel(prevModel tea.Model, width, height int, dirNew, dirOld *restic
 		table: table.New(
 			table.WithColumns(columns),
 			table.WithFocused(true),
-			table.WithHeight(10),
+			table.WithHeight(ViewportHeight),
 			table.WithStyles(tableStyles),
 		),
 	}
@@ -84,20 +85,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c1Width := int(math.Floor(float64(m.width) * 0.4))
 		c2Width := int(math.Ceil(float64(m.width) * 0.4))
 		c3Width := m.width - c1Width - c2Width
+
 		columns := []table.Column{
 			{Title: fmt.Sprintf("--- New (%s) ---", m.metadata.NewerId), Width: c1Width},
 			{Title: fmt.Sprintf("--- Old (%s) ---", m.metadata.OlderId), Width: c2Width},
 			{Title: "---  Diff ---", Width: c3Width},
 		}
-		// Restore cursor or set to 0 if there is no previous cursor
-		oldCursor := m.table.Cursor()
-		m.table = table.New(
-			table.WithColumns(columns),
-			table.WithFocused(true),
-			table.WithHeight(10),
-			table.WithStyles(tableStyles),
-		)
-		return m.updateTable(oldCursor), nil
+
+		m.table.SetColumns(columns)
+		m.table.SetHeight(ViewportHeight)
+
+		return m.updateTable(m.table.Cursor()), nil
 
 	case tea.KeyMsg:
 		switch {
@@ -120,6 +118,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keyMap.PrevDir):
 			// Notifies if the window have changed size
+
+			// I am not sure if this is necessary at all
+			// The idea is to preserve the window dimensions
+			// when navigating back, since the parent model
+			// does not know about possible changes
+			// Lets keep it for now
 			if m.prevModel != nil {
 				return m.prevModel, func() tea.Msg {
 					return tea.WindowSizeMsg{Width: m.width, Height: m.height}
