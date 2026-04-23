@@ -2,7 +2,7 @@
 
 A diff tool for restic snapshots.
 
-![demo](screenshots/demo.gif "demo.gif")
+https://github.com/user-attachments/assets/45904ca0-5e0e-475f-81e1-263f00372022
 
 ## Problem
 - Your last [restic](https://github.com/restic/restic) snapshot is `snapshot_old`
