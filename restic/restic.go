@@ -12,7 +12,6 @@ import (
 type Snapshot struct {
 	Id      string
 	Date    time.Time
-	Size    uint64
 	SizeStr string
 	Path    string
 }
@@ -26,8 +25,6 @@ type SnapshotsMetadata struct {
 
 type SnapshotSummaryJson struct {
 	BytesProcessed uint64 `json:"total_bytes_processed"`
-	DataAdded      uint64 `json:"data_added"`
-	DataPacked     uint64 `json:"data_added_packed"`
 }
 
 type SnapshotOutputJson struct {
@@ -52,12 +49,8 @@ func GetSnapshots(repoPath, mountPath string) ([]Snapshot, error) {
 	if cmd = exec.Command("restic", args...); cmd == nil {
 		return []Snapshot{}, fmt.Errorf("can't execute restic command: %w", err)
 	}
-	//key := "123"
-	//var stdin bytes.Buffer
-	//stdin.Write([]byte(key))
-	//cmd.Stdin = &stdin
+
 	cmd.Stdin = os.Stdin
-	// cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	output, err := cmd.Output()
@@ -90,7 +83,6 @@ func parseCmdSnapshots(jsonOutput []byte) ([]Snapshot, error) {
 		s := Snapshot{
 			Id:      snapshotJson.ShortId,
 			Date:    snapshotJson.Time,
-			Size:    uint64(123),
 			SizeStr: sizeStr,
 		}
 		snapshots = append(snapshots, s)
