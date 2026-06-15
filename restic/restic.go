@@ -1,11 +1,11 @@
 package restic
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path"
-	"strings"
 	"time"
 )
 
@@ -24,6 +24,18 @@ type SnapshotsMetadata struct {
 	OlderId       string
 }
 
+type SnapshotSummaryJson struct {
+	BytesProcessed uint64 `json:"total_bytes_processed"`
+	DataAdded      uint64 `json:"data_added"`
+	DataPacked     uint64 `json:"data_added_packed"`
+}
+
+type SnapshotOutputJson struct {
+	ShortId             string              `json:"short_id"`
+	Time                time.Time           `json:"time"`
+	SnapshotSummaryJson SnapshotSummaryJson `json:"summary"`
+}
+
 func (s Snapshot) String() string {
 	layout := "2006-01-02 15:04:05"
 	return fmt.Sprintf("%s\t%s\t%s", s.Id, s.Date.Format(layout), s.SizeStr)
@@ -35,7 +47,7 @@ func GetSnapshots(repoPath, mountPath string) ([]Snapshot, error) {
 		return []Snapshot{}, fmt.Errorf("mount directory not found: %w", err)
 	}
 
-	args := []string{"-r", repoPath, "snapshots"}
+	args := []string{"-r", repoPath, "snapshots", "--json"}
 	var cmd *exec.Cmd
 	if cmd = exec.Command("restic", args...); cmd == nil {
 		return []Snapshot{}, fmt.Errorf("can't execute restic command: %w", err)
@@ -58,60 +70,42 @@ func GetSnapshots(repoPath, mountPath string) ([]Snapshot, error) {
 	}
 	snapshots, err = checkDirectoriesConsistency(snapshots, mountPath)
 	if err != nil {
-		return []Snapshot{}, fmt.Errorf("directoy consistency error: %w", err)
+		return []Snapshot{}, fmt.Errorf("directory consistency error: %w", err)
 	}
 
 	return snapshots, nil
 
 }
 
-func parseCmdSnapshots(rawOutput []byte) ([]Snapshot, error) {
-	var snapshots []Snapshot
-
-	// Split and remove header/footer
-	tokens := strings.Split(string(rawOutput), "\n")
-	start := 2
-	end := len(tokens) - 3
-
-	if end <= start {
-		errMsg := fmt.Errorf("expected at least 1 snapshot")
-		return []Snapshot{}, errMsg
+func parseCmdSnapshots(jsonOutput []byte) ([]Snapshot, error) {
+	var snapshotsJson []SnapshotOutputJson
+	err := json.Unmarshal(jsonOutput, &snapshotsJson)
+	if err != nil {
+		return []Snapshot{}, fmt.Errorf("failed to parse snapshot details: %w", err)
 	}
-
-	for _, t := range tokens[start:end] {
-		fields := strings.Fields(t)
-		// TODO: remove hardcoded timezone
-		layout := "2006-01-02 15:04:05-07:00"
-		timeStr := fmt.Sprintf("%s %s%s",
-			fields[1],
-			fields[2],
-			"-03:00",
-		)
-		t, err := time.Parse(layout, timeStr)
-		if err != nil {
-			panic(err)
-		}
-		// Use the format: X.YYY Gib
-		sizeStr := fmt.Sprintf("%s%s",
-			fields[len(fields)-2],
-			fields[len(fields)-1],
-		)
+	var snapshots []Snapshot
+	for _, snapshotJson := range snapshotsJson {
+		sizeStr := formatBytes(snapshotJson.SnapshotSummaryJson.BytesProcessed)
 
 		s := Snapshot{
-			Id:      fields[0],
-			Date:    t,
+			Id:      snapshotJson.ShortId,
+			Date:    snapshotJson.Time,
 			Size:    uint64(123),
 			SizeStr: sizeStr,
 		}
 		snapshots = append(snapshots, s)
+
 	}
 
-	return snapshots, nil
+	return snapshots, err
 }
 
 func snapshotContainsTime(s []Snapshot, t time.Time) int {
+	// Fix nanosecond precision issue
+	targetTime := t.Truncate(time.Second)
+
 	for index, x := range s {
-		if x.Date.Compare(t) == 0 {
+		if x.Date.Truncate(time.Second).Equal(targetTime) {
 			return index
 		}
 	}
@@ -135,11 +129,12 @@ func checkDirectoriesConsistency(s []Snapshot, mountPath string) ([]Snapshot, er
 		return []Snapshot{}, errMsg
 	}
 	for _, entry := range dirEntries {
-		t, err := time.Parse(dateTimeLayout, entry.Name())
 		// The directory has a symlink to the most recent snapshot. We ignore it
 		if entry.Name() == "latest" {
 			continue
 		}
+
+		t, err := time.Parse(dateTimeLayout, entry.Name())
 		// Bad naming and it is not the previous case. It should never happen.
 		if err != nil {
 			panic(err)
@@ -155,4 +150,21 @@ func checkDirectoriesConsistency(s []Snapshot, mountPath string) ([]Snapshot, er
 	}
 
 	return s, nil
+}
+
+// Don't use humanize package in this case
+// More decimals is better for size comparison
+func formatBytes(bytes uint64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+
+	return fmt.Sprintf("%.3f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
